@@ -31,7 +31,7 @@
   html, body { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
 
   /* Layout */
-  .app { display: grid; grid-template-rows: 52px 1fr; height: 100vh; }
+  .app { display: grid; grid-template-rows: 1fr; height: 100vh; }
 
   /* Top bar */
   .topbar {
@@ -100,7 +100,7 @@
 
   /* Control band (left) */
   .ctrl-band {
-    position: absolute; top: 62px; left: 12px; bottom: 12px;
+    position: absolute; top: 12px; left: 12px; bottom: 12px;
     width: 240px;
     background: var(--panel);
     border: 1px solid var(--border);
@@ -244,15 +244,8 @@
 })();
 </script>
 <div class="app">
-  <div class="topbar">
-    <div class="topbar-logo">
-      <svg viewBox="0 0 16 16" fill="white"><circle cx="8" cy="7" r="3"/><path d="M8 1C5.24 1 3 3.24 3 6c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5z" stroke="white" stroke-width="1" fill="none"/></svg>
-    </div>
-    <div>
-      <div class="topbar h1" style="font-size:14px;font-weight:700;">Hitos RGT · Galdakao</div>
-      <div class="topbar-sub">ETRS89 · Huso 30N · Bizkaia</div>
-    </div>
-    <div class="topbar-sep"></div>
+  <!-- Floating count + zoom-all (top right) -->
+  <div style="position:absolute;top:12px;right:12px;z-index:1000;display:flex;gap:6px;align-items:center;">
     <span class="topbar-count" id="countBadge">— puntos</span>
     <div class="topbar-zoom">
       <button onclick="fitAll()">⊞ Ver todos</button>
@@ -326,26 +319,21 @@
 
     <!-- IDW Date Slider -->
     <div id="idw-slider" style="
-      position:absolute; top:70px; left:calc(50% + 130px); transform:translateX(-50%);
+      position:absolute; bottom:18px; left:calc(50% + 130px); transform:translateX(-50%);
       background:var(--panel); border:1px solid var(--border); border-radius:10px;
-      padding:12px 18px; z-index:900; min-width:520px; max-width:80vw;
+      padding:8px 16px; z-index:900; min-width:780px; max-width:80vw;
       box-shadow:0 4px 20px rgba(0,0,0,.6);
-      display:flex; flex-direction:column; gap:8px;
+      display:flex; align-items:center; gap:14px;
     ">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;">
-        <div style="font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">📅 Fecha IDW</div>
-        <div id="idw-date-label" style="font-weight:700;font-size:14px;color:var(--accent);font-family:'Consolas',monospace;">—</div>
-        <div style="display:flex;gap:4px;">
-          <button id="btn-prev" onclick="stepDate(-1)" style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text);width:26px;height:26px;border-radius:5px;cursor:pointer;font-family:inherit;">‹</button>
-          <button id="btn-next" onclick="stepDate(1)" style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text);width:26px;height:26px;border-radius:5px;cursor:pointer;font-family:inherit;">›</button>
-        </div>
+      <span id="idw-min" style="font-size:10px;color:var(--muted);font-family:'Consolas',monospace;white-space:nowrap;">—</span>
+      <input type="range" id="dateSlider" min="0" max="0" step="1" value="0" style="flex:1;accent-color:var(--accent);min-width:0;" oninput="onSliderChange(this.value)">
+      <span id="idw-max" style="font-size:10px;color:var(--muted);font-family:'Consolas',monospace;white-space:nowrap;">—</span>
+      <span id="idw-count" style="font-size:10px;color:var(--muted);font-family:'Consolas',monospace;white-space:nowrap;">0 / 0</span>
+      <div style="display:flex;gap:4px;">
+        <button id="btn-prev" onclick="stepDate(-1)" style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text);width:26px;height:26px;border-radius:5px;cursor:pointer;font-family:inherit;">‹</button>
+        <button id="btn-next" onclick="stepDate(1)" style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text);width:26px;height:26px;border-radius:5px;cursor:pointer;font-family:inherit;">›</button>
       </div>
-      <input type="range" id="dateSlider" min="0" max="0" step="1" value="0" style="width:100%;accent-color:var(--accent);" oninput="onSliderChange(this.value)">
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);font-family:'Consolas',monospace;">
-        <span id="idw-min">—</span>
-        <span id="idw-count">0 / 0</span>
-        <span id="idw-max">—</span>
-      </div>
+      <div id="idw-date-label" style="font-weight:700;font-size:14px;color:var(--accent);font-family:'Consolas',monospace;white-space:nowrap;min-width:96px;text-align:right;">—</div>
     </div>
 
   </div>
