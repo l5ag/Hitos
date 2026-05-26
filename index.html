@@ -264,6 +264,18 @@
 
     <!-- Control band: layers + IDW legend + hitos search/list -->
     <div class="ctrl-band">
+      <div class="ctrl-section" id="reproductor-section">
+        <div class="ctrl-header">Reproductor</div>
+        <div class="ctrl-body">
+          <div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+            <button id="btn-idw-play" onclick="toggleIDWPlay()" title="Reproducir / pausar secuencia IDW"
+              style="background:rgba(56,139,253,.18);border:1px solid var(--accent);color:var(--accent);width:30px;height:26px;border-radius:5px;cursor:pointer;font-family:inherit;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">▶</button>
+            <span style="color:var(--muted);">Velocidad</span>
+            <input type="range" id="idwSpeed" min="200" max="2000" step="100" value="800" style="flex:1;accent-color:var(--accent);" oninput="onIdwSpeedChange(this.value)">
+            <span id="idwSpeedVal" style="font-family:'Consolas',monospace;color:var(--accent);min-width:46px;text-align:right;">800 ms</span>
+          </div>
+        </div>
+      </div>
       <div class="ctrl-section">
         <div class="ctrl-header">Capas base</div>
         <div class="ctrl-body">
@@ -656,7 +668,7 @@ let pkLookup = null;
 let frentesData = null;
 const frenteMarkers = {};
 const FRENTE_NAMES = ['OLBE', 'OLAP', 'ABGA', 'ABHO'];
-const FRENTE_COLOR = '#ff9d2e';
+const FRENTE_COLOR = '#a8a8a8';
 
 function makeGearIcon(name, size) {
   const s = size || 38;
@@ -1039,6 +1051,49 @@ function stepDate(d) {
   idwIdx = ni;
   actualizarUISlider();
   cargarIDW(idwArchivos[idwIdx].archivo);
+}
+
+// ── Play / Pause de la secuencia IDW ──────────────────────────────────
+let idwPlaying = false;
+let idwPlayTimer = null;
+
+function _idwTick() {
+  if (!idwPlaying) return;
+  if (idwIdx >= idwArchivos.length - 1) { pauseIDWPlay(); return; }
+  idwIdx++;
+  actualizarUISlider();
+  cargarIDW(idwArchivos[idwIdx].archivo).finally(() => {
+    if (!idwPlaying) return;
+    const speed = parseInt(document.getElementById('idwSpeed').value, 10) || 800;
+    idwPlayTimer = setTimeout(_idwTick, speed);
+  });
+}
+
+function startIDWPlay() {
+  if (!idwArchivos.length || idwPlaying) return;
+  // Si no está activa la capa IDW, la activamos
+  if (!idwVisible) toggleIDW();
+  idwPlaying = true;
+  document.getElementById('btn-idw-play').innerHTML = '⏸';
+  // Si está al final, volver al inicio (-1 para que _idwTick incremente a 0)
+  if (idwIdx >= idwArchivos.length - 1) idwIdx = -1;
+  _idwTick();
+}
+
+function pauseIDWPlay() {
+  idwPlaying = false;
+  if (idwPlayTimer) clearTimeout(idwPlayTimer);
+  idwPlayTimer = null;
+  const btn = document.getElementById('btn-idw-play');
+  if (btn) btn.innerHTML = '▶';
+}
+
+function toggleIDWPlay() {
+  if (idwPlaying) pauseIDWPlay(); else startIDWPlay();
+}
+
+function onIdwSpeedChange(v) {
+  document.getElementById('idwSpeedVal').textContent = v + ' ms';
 }
 
 // ── Auto-descubrimiento de archivos IDW_YYMMDD.csv ────────────────────
