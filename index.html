@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hitos RGT · Galdakao</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+<script src="https://unpkg.com/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
+<script src="https://unpkg.com/wellknown@0.5.0/wellknown.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #7d8590;
+    --accent: #388bfd;
+    --accent-glow: rgba(56,139,253,.25);
+    --green: #3fb950;
+    --dot: #2be2ec;
+    --dot-hover: #ff6b35;
+  }
+
+  html, body { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+
+  /* Layout */
+  .app { display: grid; grid-template-rows: 52px 1fr; height: 100vh; }
+
+  /* Top bar */
+  .topbar {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 16px;
+    padding: 0 20px;
+    z-index: 1000;
+  }
+  .topbar-logo {
+    width: 28px; height: 28px; border-radius: 6px;
+    background: var(--accent); display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .topbar-logo svg { width: 16px; height: 16px; }
+  .topbar h1 { font-size: 14px; font-weight: 700; }
+  .topbar-sub { font-size: 12px; color: var(--muted); }
+  .topbar-sep { flex: 1; }
+  .topbar-count {
+    font-size: 12px; font-weight: 600;
+    background: var(--accent-glow); color: var(--accent);
+    padding: 4px 12px; border-radius: 99px;
+    border: 1px solid var(--accent);
+  }
+  .topbar-zoom {
+    display: flex; gap: 4px;
+  }
+  .topbar-zoom button {
+    font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 6px;
+    background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    cursor: pointer; font-family: inherit; transition: background .15s;
+  }
+  .topbar-zoom button:hover { background: var(--border); }
+
+  /* Map */
+  #map { width: 100%; height: 100%; }
+
+  /* Popup */
+  .leaflet-popup-content-wrapper {
+    background: var(--panel) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,.6) !important;
+    padding: 0 !important;
+  }
+  .leaflet-popup-content {
+    margin: 0 !important;
+    width: auto !important;
+  }
+  .leaflet-popup-tip { background: var(--panel) !important; }
+  .leaflet-popup-close-button { color: var(--muted) !important; top: 8px !important; right: 10px !important; }
+
+  .popup-inner { padding: 14px 18px; min-width: 180px; }
+  .hito-tooltip {
+    background: #161b22 !important; color: #e6edf3 !important;
+    border: 1px solid #2be2ec !important; border-radius: 6px !important;
+    font-size: 12px !important; padding: 6px 10px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,.5) !important;
+    white-space: nowrap;
+  }
+  .hito-tooltip::before { border-top-color: #2be2ec !important; }
+  @keyframes gear-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .popup-hito { font-size: 18px; font-weight: 800; color: var(--dot); letter-spacing: .02em; margin-bottom: 8px; }
+  .popup-row { display: flex; justify-content: space-between; gap: 20px; font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .popup-row span:last-child { color: var(--text); font-family: 'Consolas', monospace; font-size: 11.5px; }
+
+  /* Control band (left) */
+  .ctrl-band {
+    position: absolute; top: 62px; left: 12px; bottom: 12px;
+    width: 240px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    z-index: 900;
+    box-shadow: 0 4px 20px rgba(0,0,0,.5);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .ctrl-section { border-bottom: 1px solid var(--border); }
+  .ctrl-section:last-child { border-bottom: 0; }
+  .ctrl-header {
+    padding: 10px 14px;
+    font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted);
+    background: rgba(255,255,255,.03);
+  }
+  .ctrl-body { padding: 10px 14px; }
+
+  /* Layer buttons */
+  .layer-btn {
+    width: 100%; font-size: 11px; font-weight: 600; padding: 6px 10px; border-radius: 6px;
+    background: rgba(255,255,255,.04); color: var(--muted); border: 1px solid var(--border);
+    cursor: pointer; font-family: inherit; transition: all .15s; text-align: left;
+    margin-bottom: 4px; display: block;
+  }
+  .layer-btn:last-child { margin-bottom: 0; }
+  .layer-btn.active { background: var(--accent-glow); color: var(--accent); border-color: var(--accent); }
+
+  /* Hitos search + list */
+  .side-search input {
+    width: 100%; font-family: inherit; font-size: 12px;
+    background: rgba(255,255,255,.06); border: 1px solid var(--border);
+    border-radius: 5px; color: var(--text); padding: 5px 8px;
+    outline: none; margin-bottom: 8px;
+  }
+  .side-search input::placeholder { color: var(--muted); }
+  .side-list {
+    flex: 1; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+    margin: 0 -14px -10px; padding: 0;
+  }
+  .side-item {
+    padding: 6px 14px; font-size: 12px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid rgba(48,54,61,.4);
+    transition: background .1s;
+  }
+  .side-item:hover { background: rgba(56,139,253,.12); color: var(--accent); }
+  .side-item::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--dot); flex-shrink: 0;
+  }
+  .ctrl-section.hitos { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  .ctrl-section.hitos .ctrl-body { flex: 1; display: flex; flex-direction: column; min-height: 0; padding-bottom: 10px; }
+  .line-head {
+    padding: 9px 14px; font-size: 13px; font-weight: 700; cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between;
+    color: var(--text); border-bottom: 1px solid rgba(48,54,61,.5);
+    transition: background .1s;
+  }
+  .line-head:hover { background: rgba(56,139,253,.12); color: var(--accent); }
+  .line-count { font-size:10px; color:var(--muted); font-family:'Consolas',monospace; }
+
+  /* IDW legend rows */
+  .lg-row { display:flex; align-items:center; gap:8px; font-size:11px; margin-bottom:3px; }
+  .lg-sw { width:22px; height:12px; border-radius:2px; opacity:.85; flex-shrink:0; }
+</style>
+<style>
+  /* Password gate */
+  #pwd-gate {
+    position: fixed; inset: 0; z-index: 99999;
+    background: #f0f0f2;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding-top: 58vh;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+  #pwd-gate iframe.sphere-bg {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    border: 0; pointer-events: none; z-index: 1;
+  }
+  #pwd-card { position: relative; z-index: 2; }
+  #pwd-gate.hidden { display: none; }
+  #pwd-card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+    padding: 32px 36px; min-width: 320px; max-width: 90vw;
+    box-shadow: 0 20px 60px rgba(0,0,0,.6);
+    text-align: center;
+  }
+  #pwd-card h2 { font-size: 17px; font-weight: 700; color: #e6edf3; margin-bottom: 6px; }
+  #pwd-card p  { font-size: 12px; color: #7d8590; margin-bottom: 20px; }
+  #pwd-card input {
+    width: 100%; padding: 10px 14px;
+    background: #0d1117; border: 1px solid #30363d; border-radius: 7px;
+    color: #e6edf3; font-size: 14px; font-family: inherit; outline: none;
+    text-align: center; letter-spacing: .15em;
+  }
+  #pwd-card input:focus { border-color: #2be2ec; }
+  #pwd-card button {
+    margin-top: 14px; width: 100%; padding: 10px;
+    background: #2be2ec; color: #0d1117; border: 0; border-radius: 7px;
+    font-weight: 700; font-size: 13px; font-family: inherit; cursor: pointer;
+    letter-spacing: .03em;
+  }
+  #pwd-card button:hover { background: #5cf2fa; }
+  #pwd-error { color: #f85149; font-size: 12px; margin-top: 10px; min-height: 14px; }
+  body.locked .app { filter: blur(18px); pointer-events: none; user-select: none; }
+</style>
+<body class="locked">
+<div id="pwd-gate">
+  <iframe class="sphere-bg" src="sphere.html" title="Sener" tabindex="-1"></iframe>
+  <div id="pwd-card">
+    <h2>🔒 Acceso restringido</h2>
+    <p>Introduce la contraseña para ver el mapa</p>
+    <input id="pwd-input" type="password" autocomplete="off" placeholder="••••••••" autofocus>
+    <button id="pwd-btn">Entrar</button>
+    <div id="pwd-error"></div>
+  </div>
+</div>
+<script>
+(function(){
+  // ⚠ Cambia esta contraseña por la que quieras
+  const PASSWORD = 'senermola';
+  const KEY = 'hitos_pwd_ok';
+  const gate = document.getElementById('pwd-gate');
+  const inp  = document.getElementById('pwd-input');
+  const btn  = document.getElementById('pwd-btn');
+  const err  = document.getElementById('pwd-error');
+  function unlock(){
+    document.body.classList.remove('locked');
+    gate.classList.add('hidden');
+    try { sessionStorage.setItem(KEY, '1'); } catch(e) {}
+  }
+  function attempt(){
+    if (inp.value === PASSWORD) { err.textContent = ''; unlock(); }
+    else { err.textContent = 'Contraseña incorrecta'; inp.value = ''; inp.focus(); }
+  }
+  btn.addEventListener('click', attempt);
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') attempt(); });
+  try { if (sessionStorage.getItem(KEY) === '1') unlock(); } catch(e) {}
+})();
+</script>
+<div class="app">
+  <div class="topbar">
+    <div class="topbar-logo">
+      <svg viewBox="0 0 16 16" fill="white"><circle cx="8" cy="7" r="3"/><path d="M8 1C5.24 1 3 3.24 3 6c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5z" stroke="white" stroke-width="1" fill="none"/></svg>
+    </div>
+    <div>
+      <div class="topbar h1" style="font-size:14px;font-weight:700;">Hitos RGT · Galdakao</div>
+      <div class="topbar-sub">ETRS89 · Huso 30N · Bizkaia</div>
+    </div>
+    <div class="topbar-sep"></div>
+    <span class="topbar-count" id="countBadge">— puntos</span>
+    <div class="topbar-zoom">
+      <button onclick="fitAll()">⊞ Ver todos</button>
+    </div>
+  </div>
+
+  <div style="position:relative; height:100%;">
+    <div id="map"></div>
+
+    <!-- Control band: layers + IDW legend + hitos search/list -->
+    <div class="ctrl-band">
+      <div class="ctrl-section">
+        <div class="ctrl-header">Capas base</div>
+        <div class="ctrl-body">
+          <button class="layer-btn active" id="btn-sat" onclick="setLayer('sat')">🛰 Satélite</button>
+          <button class="layer-btn" id="btn-osm" onclick="setLayer('osm')">🗺 Calles</button>
+          <button class="layer-btn" id="btn-topo" onclick="setLayer('topo')">⛰ Topográfico</button>
+        </div>
+      </div>
+      <div class="ctrl-section">
+        <div class="ctrl-header">Capas de datos</div>
+        <div class="ctrl-body">
+          <button class="layer-btn active" id="btn-kml" onclick="toggleKML()">📐 Trazados L5</button>
+          <button class="layer-btn active" id="btn-idw" onclick="toggleIDW()">🌡 IDW Cotas</button>
+          <button class="layer-btn active" id="btn-frentes" onclick="toggleFrentes()">⚙ Frentes túnel</button>
+        </div>
+      </div>
+      <div class="ctrl-section" id="idw-legend">
+        <div class="ctrl-header">IDW Δ Cota (mm)</div>
+        <div class="ctrl-body">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11px;">
+            <span style="color:var(--muted);min-width:60px;">Opacidad</span>
+            <input type="range" id="idwOpacity" min="0" max="100" step="1" value="85" style="flex:1;accent-color:var(--accent);" oninput="setIdwOpacity(this.value)">
+            <span id="idwOpacityVal" style="font-family:'Consolas',monospace;color:var(--accent);min-width:34px;text-align:right;">85%</span>
+          </div>
+          <div class="lg-row"><span class="lg-sw" style="background:rgb(40,0,0);"></span><span>≤ −14 (subsidencia)</span></div>
+          <div class="lg-row"><span class="lg-sw" style="background:rgb(80,0,0);"></span><span>−10</span></div>
+          <div class="lg-row"><span class="lg-sw" style="background:rgb(180,30,20);"></span><span>−8</span></div>
+          <div class="lg-row"><span class="lg-sw" style="background:rgb(230,100,30);"></span><span>−6</span></div>
+          <div class="lg-row"><span class="lg-sw" style="background:rgb(245,180,50);"></span><span>−4</span></div>
+          <div class="lg-row"><span class="lg-sw" style="background:rgb(250,230,100);"></span><span>−2</span></div>
+          <div class="lg-row"><span class="lg-sw" style="background:transparent;border:1px dashed #6e7681;"></span><span>−1 a +1 (estable)</span></div>
+          <div class="lg-row"><span class="lg-sw" style="background:rgb(198,219,239);"></span><span>+2</span></div>
+          <div class="lg-row"><span class="lg-sw" style="background:rgb(158,202,225);"></span><span>+4</span></div>
+          <div class="lg-row"><span class="lg-sw" style="background:rgb(107,174,214);"></span><span>+6</span></div>
+          <div class="lg-row"><span class="lg-sw" style="background:rgb(66,146,198);"></span><span>+8</span></div>
+          <div class="lg-row"><span class="lg-sw" style="background:rgb(33,113,181);"></span><span>+10</span></div>
+          <div class="lg-row"><span class="lg-sw" style="background:rgb(8,48,107);"></span><span>≥ +14 (alzamiento)</span></div>
+        </div>
+      </div>
+      <div class="ctrl-section hitos">
+        <div class="ctrl-header">Líneas de Hitos</div>
+        <div class="ctrl-body side-search">
+          <input type="text" id="searchInput" placeholder="Buscar línea (H1, H2…)…" oninput="filterList(this.value)">
+          <div class="side-list" id="sideList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- IDW Date Slider -->
+    <div id="idw-slider" style="
+      position:absolute; top:70px; left:calc(50% + 130px); transform:translateX(-50%);
+      background:var(--panel); border:1px solid var(--border); border-radius:10px;
+      padding:12px 18px; z-index:900; min-width:520px; max-width:80vw;
+      box-shadow:0 4px 20px rgba(0,0,0,.6);
+      display:flex; flex-direction:column; gap:8px;
+    ">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;">
+        <div style="font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">📅 Fecha IDW</div>
+        <div id="idw-date-label" style="font-weight:700;font-size:14px;color:var(--accent);font-family:'Consolas',monospace;">—</div>
+        <div style="display:flex;gap:4px;">
+          <button id="btn-prev" onclick="stepDate(-1)" style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text);width:26px;height:26px;border-radius:5px;cursor:pointer;font-family:inherit;">‹</button>
+          <button id="btn-next" onclick="stepDate(1)" style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text);width:26px;height:26px;border-radius:5px;cursor:pointer;font-family:inherit;">›</button>
+        </div>
+      </div>
+      <input type="range" id="dateSlider" min="0" max="0" step="1" value="0" style="width:100%;accent-color:var(--accent);" oninput="onSliderChange(this.value)">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);font-family:'Consolas',monospace;">
+        <span id="idw-min">—</span>
+        <span id="idw-count">0 / 0</span>
+        <span id="idw-max">—</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Proj4 ETRS89 UTM 30N → WGS84 ────────────────────────────────────────────
+proj4.defs("EPSG:25830", "+proj=utm +zone=30 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs");
+
+function utmToLatLng(x, y) {
+  const [lng, lat] = proj4("EPSG:25830", "WGS84", [x, y]);
+  return [lat, lng];
+}
+
+// ── CSV data ──────────────────────────────────────────────────────────────────
+const CSV = `HITO;X_UTM;Y_UTM
+H1.01;513299.444;4786476.443
+H1.02;513274.2;4786419.883
+H1.03;513270.384;4786416.777
+H1.04;513258.317;4786394.639
+H1.05;513222.858;4786321.298
+H1.06;513173.744;4786256.721
+H2.01;513197.114;4786477.545
+H2.02;513154.853;4786399.177
+H2.03;513146.679;4786376.591
+H2.04;513135.244;4786354.292
+H2.05;513073.779;4786316.51
+H3.01;513080.345;4786483.344
+H3.02;513064.688;4786455.055
+H3.03;513050.237;4786428.54
+H3.04;513040.854;4786410.348
+H3.05;513001.264;4786355.299
+H4.01;513032.625;4786495.539
+H4.02;513030.013;4786468.888
+H4.03;513018.06;4786450.319
+H4.04;513009.025;4786429.324
+H4.05;512987.134;4786407.169
+H5.01;512979.099;4786521.891
+H5.02;512965.466;4786503.982
+H5.03;512956.178;4786483.454
+H5.04;512945.386;4786465.397
+H6.01;512918.117;4786545.736
+H6.02;512918.756;4786524.912
+H6.03;512921.794;4786500.788
+H6.04;512923.958;4786490.866
+H6.05;512919.35;4786450.675
+H7.01;512811.476;4786567.031
+H7.02;512814.39;4786541.323
+H7.03;512818.474;4786518.36
+H7.04;512824.461;4786493.86
+H7.05;512829.959;4786472.26
+H8.02;512797.075;4786533.82
+H8.03;512800.723;4786514.33
+H8.04;512804.737;4786494.025
+H8.05;512808.788;4786474.929
+H9.01;512770.189;4786556.512
+H9.02;512773.947;4786536.958
+H9.03;512778.964;4786513.24
+H9.04;512782.738;4786491.358
+H9.05;512787.899;4786469.956
+H10.01;512756.359;4786554.835
+H10.02;512760.479;4786527.652
+H10.03;512764.657;4786511.337
+H10.04;512768.513;4786491.56
+H10.05;512774.283;4786462.573
+H11.01;512704.827;4786543.897
+H11.02;512709.278;4786522.738
+H11.03;512713.073;4786505.951
+H11.04;512719.843;4786474.307
+H11.05;512724.97;4786454.941
+H12.01;512612.044;4786530.071
+H12.02;512616.473;4786509.04
+H12.03;512619.516;4786494.839
+H12.04;512622.492;4786480.423
+H12.05;512627.701;4786455.492
+H13.01;512601.468;4786527.529
+H13.02;512606.549;4786504.679
+H13.03;512608.973;4786491.846
+H13.04;512610.724;4786481.544
+H13.05;512615.92;4786459.787
+H14.02;512573.181;4786506.822
+H14.03;512573.618;4786494.817
+H14.05;512585.514;4786417.785
+H15.03;512536.552;4786485.17
+H15.04;512537.26;4786458.084
+H16.01;512526.481;4786528.473
+H16.02;512523.076;4786508.172
+H16.03;512518.228;4786484.254
+H16.04;512516.672;4786472.749
+H16.05;512515.059;4786441.643
+H17.01;512484.848;4786537.01
+H17.02;512480.451;4786512.004
+H17.03;512481.172;4786492.319
+H17.04;512479.08;4786471.823
+H18.01;512460.308;4786518.164
+H18.02;512462.454;4786505.112
+H18.03;512465.283;4786492.772
+H18.04;512471.423;4786476.987
+H18.05;512479.385;4786458.241
+H19.02;512450.945;4786509.476
+H19.03;512440.102;4786499.241
+H19.04;512424.439;4786485.563
+H19.05;512404.213;4786466.239
+H20.01;512227.042;4786627.639
+H20.03;512200.846;4786591.598
+H20.04;512195.474;4786583.806
+H20.05;512165.344;4786544.34
+H21.01;512179.233;4786636.811
+H21.02;512169.616;4786623.562
+H21.03;512157.06;4786607.204
+H21.04;512143.46;4786585.27
+H21.05;512127.396;4786563.979
+H22.01;512140.327;4786645.499
+H22.02;512116.317;4786631.274
+H22.03;512105.088;4786616.982
+H22.04;512091.206;4786599.093
+H22.05;512080.687;4786585.83
+H23.01;511563.799;4786738.176
+H23.02;511536.733;4786727.099
+H23.03;511524.612;4786721.014
+H23.04;511506.915;4786713.793
+H23.05;511481.575;4786700.433
+H24.01;511489.418;4786779.811
+H24.02;511480.472;4786756.428
+H24.03;511476.266;4786747.047
+H24.04;511469.138;4786732.573
+H24.05;511470.707;4786713.317
+H25.02;511328.617;4786831.165
+H25.04;511321.494;4786815.657
+H25.05;511301.36;4786782.528
+H26.02;511310.128;4786839.825
+H26.03;511304.125;4786827.812
+H26.04;511299.728;4786817.618
+H26.05;511290.468;4786798.26
+H27.02;510841.978;4786990.855
+H27.03;510823.677;4786970.089
+H27.04;510808.44;4786948.597
+H27.05;510796.84;4786924.92
+H28.01;510806.754;4787035.115
+H28.02;510774.196;4787007.735
+H28.03;510768.099;4787002.141
+H28.04;510754.858;4786990.927
+H28.05;510735.749;4786974.988
+H29.01;510657.822;4787097.278
+H29.02;510652.754;4787089.06
+H29.03;510661.892;4787063.594
+H29.05;510661.19;4787044.717`;
+
+// ── Parse CSV ─────────────────────────────────────────────────────────────────
+const lines = CSV.trim().split('\n').slice(1);
+const points = lines.map(l => {
+  const [hito, x, y] = l.split(';');
+  return { hito: hito.trim(), x: parseFloat(x), y: parseFloat(y) };
+});
+
+// ── Map init ──────────────────────────────────────────────────────────────────
+const map = L.map('map', { zoomControl: false, maxZoom: 19 });
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+// Layers
+const layers = {
+  sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Esri World Imagery', maxZoom: 19, maxNativeZoom: 18
+  }),
+  osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap', maxZoom: 19
+  }),
+  topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenTopoMap', maxZoom: 17
+  })
+};
+layers.sat.addTo(map);
+let activeLayer = 'sat';
+
+function setLayer(name) {
+  map.removeLayer(layers[activeLayer]);
+  layers[name].addTo(map);
+  activeLayer = name;
+  document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + name).classList.add('active');
+}
+
+// ── Custom icon ───────────────────────────────────────────────────────────────
+function pointInPolygon(layer, latlng) {
+  const g = layer.feature && layer.feature.geometry;
+  if (!g) return false;
+  const polys = g.type === 'MultiPolygon' ? g.coordinates : [g.coordinates];
+  const x = latlng.lng, y = latlng.lat;
+  for (const poly of polys) {
+    const ring = poly[0];
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1];
+      const xj = ring[j][0], yj = ring[j][1];
+      const intersect = ((yi > y) !== (yj > y)) &&
+        (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    if (inside) return true;
+  }
+  return false;
+}
+
+function makeIcon(hovered) {
+  const color = hovered ? '#ff6b35' : '#2be2ec';
+  return L.divIcon({
+    className: '',
+    html: `<svg width="14" height="14" viewBox="0 0 14 14">
+      <circle cx="7" cy="7" r="5" fill="${color}" stroke="rgba(0,0,0,.5)" stroke-width="1.5"/>
+      <circle cx="7" cy="7" r="2" fill="white" opacity=".7"/>
+    </svg>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+    popupAnchor: [0, -10]
+  });
+}
+
+// ── Place markers ─────────────────────────────────────────────────────────────
+const markers = {};
+const latLngs = [];
+
+points.forEach(p => {
+  const ll = utmToLatLng(p.x, p.y);
+  latLngs.push(ll);
+
+  const marker = L.marker(ll, { icon: makeIcon(false) });
+
+  const popupHtml = `
+    <div class="popup-inner">
+      <div class="popup-hito">${p.hito}</div>
+      <div class="popup-row"><span>X UTM</span><span>${p.x.toFixed(3)}</span></div>
+      <div class="popup-row"><span>Y UTM</span><span>${p.y.toFixed(3)}</span></div>
+      <div class="popup-row"><span>Lat</span><span>${ll[0].toFixed(6)}</span></div>
+      <div class="popup-row"><span>Lon</span><span>${ll[1].toFixed(6)}</span></div>
+    </div>`;
+
+  marker.bindPopup(popupHtml, { maxWidth: 220 });
+  marker.bindTooltip('', { direction: 'top', offset: [0, -8], className: 'hito-tooltip', opacity: 1 });
+
+  marker.on('mouseover', () => {
+    marker.setIcon(makeIcon(true));
+    let cota = '—';
+    if (idwLayer) {
+      const ll2 = marker.getLatLng();
+      idwLayer.eachLayer(l => {
+        if (cota !== '—') return;
+        if (pointInPolygon(l, ll2)) {
+          const pp = l.feature.properties;
+          const mid = (pp.ELEV_MIN + pp.ELEV_MAX) / 2;
+          cota = mid.toFixed(2) + ' mm';
+        }
+      });
+    }
+    marker.setTooltipContent(`<b style="color:#2be2ec">${p.hito}</b><br>Δ Cota: <b>${cota}</b>`);
+    marker.openTooltip();
+  });
+  marker.on('mouseout', () => {
+    marker.setIcon(makeIcon(false));
+    marker.closeTooltip();
+  });
+  marker.addTo(map);
+  markers[p.hito] = { marker, ll };
+});
+
+// ── Fit bounds ────────────────────────────────────────────────────────────────
+const bounds = L.latLngBounds(latLngs);
+map.fitBounds(bounds, { padding: [40, 40] });
+
+function fitAll() {
+  map.fitBounds(bounds, { padding: [40, 40] });
+}
+
+// ── Count badge ───────────────────────────────────────────────────────────────
+document.getElementById('countBadge').textContent = points.length + ' puntos';
+
+// ── Side list ─────────────────────────────────────────────────────────────────
+function parseLinea(hito) {
+  const m = hito.match(/^H(\d+)\./i);
+  return m ? m[1] : '?';
+}
+
+function buildList(filter) {
+  const list = document.getElementById('sideList');
+  list.innerHTML = '';
+  const f = (filter || '').toLowerCase();
+
+  const grupos = {};
+  points.forEach(p => {
+    const ln = parseLinea(p.hito);
+    (grupos[ln] = grupos[ln] || []).push(p);
+  });
+  const lineas = Object.keys(grupos).sort((a, b) => (+a) - (+b));
+
+  lineas.forEach(ln => {
+    const items = grupos[ln];
+    if (f && !(('h' + ln).includes(f))) return;
+
+    const head = document.createElement('div');
+    head.className = 'line-head';
+    head.innerHTML = `<span>H${ln}</span><span class="line-count">${items.length}</span>`;
+    head.onclick = () => {
+      const lls = items.map(p => markers[p.hito].ll);
+      if (!lls.length) return;
+      if (lls.length === 1) {
+        map.setView(lls[0], 18, { animate: true });
+        markers[items[0].hito].marker.openPopup();
+      } else {
+        map.fitBounds(L.latLngBounds(lls), { padding: [40, 40], animate: true });
+      }
+    };
+    list.appendChild(head);
+  });
+}
+
+function filterList(val) { buildList(val); }
+buildList();
+
+// ── Frentes de túnel ──────────────────────────────────────────────────────
+let pkLookup = null;
+let frentesData = null;
+const frenteMarkers = {};
+const FRENTE_NAMES = ['OLBE', 'OLAP', 'ABGA', 'ABHO'];
+const FRENTE_COLOR = '#ff9d2e';
+
+function makeGearIcon(name, size) {
+  const s = size || 38;
+  return L.divIcon({
+    className: '',
+    html: `<svg width="${s}" height="${s}" viewBox="0 0 60 60" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,.7));transform-origin:50% 50%;animation:gear-spin 4s linear infinite;">
+      <g transform="translate(30 30)">
+        <g fill="${FRENTE_COLOR}" stroke="#000" stroke-width=".8">
+          <polygon points="0,-26 -4,-18 4,-18"/>
+          <polygon points="0,-26 -4,-18 4,-18" transform="rotate(45)"/>
+          <polygon points="0,-26 -4,-18 4,-18" transform="rotate(90)"/>
+          <polygon points="0,-26 -4,-18 4,-18" transform="rotate(135)"/>
+          <polygon points="0,-26 -4,-18 4,-18" transform="rotate(180)"/>
+          <polygon points="0,-26 -4,-18 4,-18" transform="rotate(225)"/>
+          <polygon points="0,-26 -4,-18 4,-18" transform="rotate(270)"/>
+          <polygon points="0,-26 -4,-18 4,-18" transform="rotate(315)"/>
+        </g>
+        <circle r="18" fill="${FRENTE_COLOR}" stroke="#000" stroke-width="1"/>
+        <circle r="6" fill="#1a1a1a"/>
+      </g>
+    </svg>`,
+    iconSize: [s, s], iconAnchor: [s/2, s/2], popupAnchor: [0, -s/2]
+  });
+}
+
+function gearSizeForZoom(z) {
+  // z 13 → 14px, z 15 → 22px, z 17 → 32px, z 19 → 44px
+  return Math.round(Math.max(12, Math.min(48, (z - 12) * 6)));
+}
+
+function updateGearSizes() {
+  const z = map.getZoom();
+  const s = gearSizeForZoom(z);
+  FRENTE_NAMES.forEach(n => {
+    if (frenteMarkers[n]) frenteMarkers[n].setIcon(makeGearIcon(n, s));
+  });
+}
+
+// Crear los 4 marcadores ocultos
+FRENTE_NAMES.forEach(name => {
+  const m = L.marker([0, 0], { icon: makeGearIcon(name, gearSizeForZoom(map.getZoom() || 16)), opacity: 0, interactive: true });
+  m.bindTooltip('', { direction: 'top', offset: [0, -10], className: 'hito-tooltip', opacity: 1 });
+  frenteMarkers[name] = m;
+});
+map.on('zoomend', updateGearSizes);
+
+let frentesVisible = true;
+
+function buscarPkFrente(nombre, fechaISO) {
+  const data = frentesData?.[nombre];
+  if (!data) return null;
+  // última fecha <= fechaISO
+  const fechas = Object.keys(data).filter(f => f <= fechaISO).sort();
+  if (!fechas.length) return null;
+  return { fecha: fechas[fechas.length - 1], pk: data[fechas[fechas.length - 1]] };
+}
+
+function actualizarFrentes(fechaISO) {
+  if (!pkLookup || !frentesData) return;
+  FRENTE_NAMES.forEach(name => {
+    const m = frenteMarkers[name];
+    const info = buscarPkFrente(name, fechaISO);
+    if (!info) { m.setOpacity(0); return; }
+    const coords = pkLookup[info.pk];
+    if (!coords) { m.setOpacity(0); return; }
+    m.setLatLng([coords[0], coords[1]]);
+    m.setOpacity(frentesVisible ? 1 : 0);
+    m.setTooltipContent(
+      `<b style="color:${FRENTE_COLOR}">⚙ Frente ${name}</b><br>` +
+      `PK: <b>${info.pk}</b><br>` +
+      `Fecha posición: <b>${info.fecha}</b>`
+    );
+  });
+}
+
+function toggleFrentes() {
+  frentesVisible = !frentesVisible;
+  const btn = document.getElementById('btn-frentes');
+  if (frentesVisible) {
+    FRENTE_NAMES.forEach(n => frenteMarkers[n].addTo(map));
+    btn.classList.add('active');
+    if (idwArchivos[idwIdx]) actualizarFrentes(idwArchivos[idwIdx].fecha);
+  } else {
+    FRENTE_NAMES.forEach(n => map.removeLayer(frenteMarkers[n]));
+    btn.classList.remove('active');
+  }
+}
+
+// Cargar datos desde Excels en datos/
+function excelDateToISO(serial) {
+  const ms = (serial - 25569) * 86400 * 1000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+async function cargarExcels() {
+  const [pkBuf, frBuf] = await Promise.all([
+    fetch('datos/TRAZADOS EN PUNTOS.xlsx').then(r => r.arrayBuffer()),
+    fetch('datos/CONVERGENCIAS TUNEL.xlsx').then(r => r.arrayBuffer())
+  ]);
+
+  // Lookup PK → [lat, lng] de EJE_08
+  const wbPk = XLSX.read(pkBuf, { type: 'array' });
+  const eje08 = XLSX.utils.sheet_to_json(wbPk.Sheets['EJE_08']);
+  const pk = {};
+  eje08.forEach(r => {
+    const k = Math.round(r.PK);
+    if (!pk[k]) pk[k] = [r.Latitud, r.Longitud];
+  });
+
+  // Frentes por fecha
+  const wbFr = XLSX.read(frBuf, { type: 'array' });
+  const fr = {};
+  FRENTE_NAMES.forEach(name => {
+    const sh = wbFr.Sheets['TUNEL DE LÍNEA - ' + name];
+    if (!sh) { fr[name] = {}; return; }
+    const rows = XLSX.utils.sheet_to_json(sh);
+    const byDate = {};
+    rows.forEach(r => {
+      const iso = excelDateToISO(r.FECHA);
+      const pkFr = Math.round(r['PK FRENTE']);
+      if (!byDate[iso]) byDate[iso] = pkFr;
+    });
+    fr[name] = byDate;
+  });
+
+  return { pk, fr };
+}
+
+cargarExcels().then(({pk, fr}) => {
+  pkLookup = pk;
+  frentesData = fr;
+  FRENTE_NAMES.forEach(n => frenteMarkers[n].addTo(map));
+  if (idwArchivos[idwIdx]) actualizarFrentes(idwArchivos[idwIdx].fecha);
+  console.log('✓ Excels cargados:', FRENTE_NAMES.map(n => Object.keys(fr[n]||{}).length + ' ' + n).join(', '));
+}).catch(e => console.error('Error cargando Excels:', e));
+
+// ── KML Layer ─────────────────────────────────────────────────────────────────
+let kmlLayer = null;
+let kmlVisible = true;
+
+// KML color: AABBGGRR → CSS rgba
+function kmlColorToCSS(kmlColor, alpha) {
+  if (!kmlColor || kmlColor.length < 8) return alpha !== undefined ? `rgba(255,255,255,${alpha})` : '#ffffff';
+  const a = parseInt(kmlColor.substring(0,2), 16) / 255;
+  const b = parseInt(kmlColor.substring(2,4), 16);
+  const g = parseInt(kmlColor.substring(4,6), 16);
+  const r = parseInt(kmlColor.substring(6,8), 16);
+  const finalAlpha = alpha !== undefined ? alpha : a;
+  return `rgba(${r},${g},${b},${finalAlpha})`;
+}
+
+fetch('datos/Trazados_L5_con_cuneta_2027.kml')
+  .then(r => r.text())
+  .then(kmlText => {
+    // Strip namespace prefixes so toGeoJSON can parse it
+    const clean = kmlText.replace(/ns0:/g, '').replace(/xmlns:ns0="[^"]*"/g, '');
+    const parser = new DOMParser();
+    const kmlDom = parser.parseFromString(clean, 'text/xml');
+    const geojson = toGeoJSON.kml(kmlDom);
+
+    kmlLayer = L.geoJSON(geojson, {
+      style: feature => {
+        const props = feature.properties || {};
+        const styleId = (props.styleUrl || '').replace('#','');
+
+        // Color por tipo de elemento
+        let color, fillColor, weight, fillOpacity, dashArray;
+
+        if (styleId.includes('eje_197') || styleId.includes('lineStyle') && !styleId.includes('2')) {
+          color = '#30f71e'; fillColor = '#30f71e'; weight = 2; fillOpacity = 0.15;
+        } else if (styleId.includes('dxfClosed') || styleId === '') {
+          color = '#00ffff'; fillColor = 'transparent'; weight = 1.5;
+          fillOpacity = 0; dashArray = '6 4';
+        } else {
+          color = '#04b831'; fillColor = '#04b831'; weight = 2; fillOpacity = 0.2;
+        }
+        return { color, fillColor, weight, fillOpacity, dashArray, opacity: 0.9 };
+      },
+      onEachFeature: (feature, layer) => {
+        const name = feature.properties?.name || '';
+        if (name) {
+          layer.bindPopup(`
+            <div class="popup-inner">
+              <div class="popup-hito" style="font-size:13px;">${name}</div>
+              <div class="popup-row"><span>Tipo</span><span>${feature.geometry?.type || '—'}</span></div>
+            </div>`, { maxWidth: 260 });
+        }
+      }
+    }).addTo(map);
+    kmlLayer.bringToBack();
+  })
+  .catch(e => console.error('Error cargando KML:', e));
+
+// ── IDW Layer ─────────────────────────────────────────────────────────────────
+let idwLayer = null;
+let idwVisible = true;
+let idwOpacity = 0.85;
+
+function setIdwOpacity(v) {
+  idwOpacity = (+v) / 100;
+  const lbl = document.getElementById('idwOpacityVal');
+  if (lbl) lbl.textContent = v + '%';
+  if (idwLayer) {
+    idwLayer.eachLayer(l => {
+      const p = l.feature.properties;
+      const mid = (p.ELEV_MIN + p.ELEV_MAX) / 2;
+      const hasColor = Math.abs(mid) > ELEV_DEAD_ZONE;
+      l.setStyle({ fillOpacity: hasColor ? idwOpacity : 0 });
+    });
+  }
+}
+
+const ELEV_MIN_GLOBAL = -14;
+const ELEV_MAX_GLOBAL = 14;
+const ELEV_DEAD_ZONE = 1; // |val| <= 1  → transparente
+
+// Rampa: negativos = gama oscuro→rojo→naranja→amarillo (subsidencia), positivos = azules (alzamiento)
+const RAMP = [
+  [-14, [ 40,   0,   0]],
+  [-10, [ 80,   0,   0]],
+  [ -8, [180,  30,  20]],
+  [ -6, [230, 100,  30]],
+  [ -4, [245, 180,  50]],
+  [ -2, [250, 230, 100]],
+  [ -1, [253, 240, 180]],
+  [  1, [220, 235, 245]],
+  [  2, [198, 219, 239]],
+  [  4, [158, 202, 225]],
+  [  6, [107, 174, 214]],
+  [  8, [ 66, 146, 198]],
+  [ 10, [ 33, 113, 181]],
+  [ 14, [  8,  48, 107]],
+];
+
+function elevToColor(val) {
+  if (Math.abs(val) <= ELEV_DEAD_ZONE) return null; // transparente para -1, 0, +1
+  const v = Math.max(ELEV_MIN_GLOBAL, Math.min(ELEV_MAX_GLOBAL, val));
+  for (let i = 1; i < RAMP.length; i++) {
+    if (v <= RAMP[i][0]) {
+      const t = (v - RAMP[i-1][0]) / (RAMP[i][0] - RAMP[i-1][0]);
+      const a = RAMP[i-1][1], b = RAMP[i][1];
+      const r = Math.round(a[0] + t*(b[0]-a[0]));
+      const g = Math.round(a[1] + t*(b[1]-a[1]));
+      const bl = Math.round(a[2] + t*(b[2]-a[2]));
+      return `rgb(${r},${g},${bl})`;
+    }
+  }
+  return `rgb(165,0,38)`;
+}
+
+function parseCSV(text) {
+  const rows = [];
+  const lines = text.trim().split('\n');
+  // header
+  const headers = lines[0].split(',');
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    // WKT is quoted and may contain commas — extract it carefully
+    let wkt, rest;
+    if (line.startsWith('"')) {
+      const closeQuote = line.lastIndexOf('"');
+      wkt = line.slice(1, closeQuote);
+      rest = line.slice(closeQuote + 2).split(','); // skip closing quote + comma
+    } else {
+      const firstComma = line.indexOf(',');
+      wkt = line.slice(0, firstComma);
+      rest = line.slice(firstComma + 1).split(',');
+    }
+    const obj = { WKT: wkt };
+    for (let j = 0; j < rest.length; j++) {
+      obj[headers[j + 1]?.trim()] = rest[j];
+    }
+    rows.push(obj);
+  }
+  return rows;
+}
+
+// ── Slider de fechas IDW ──────────────────────────────────────────────
+let idwArchivos = []; // [{archivo, fecha, label}]
+let idwIdx = 0;
+
+function parseFechaDeNombre(nombre) {
+  // IDW_YYMMDD.csv → 20YY-MM-DD
+  const m = nombre.match(/IDW_(\d{2})(\d{2})(\d{2})\.csv/i);
+  if (!m) return { fecha: nombre, label: nombre };
+  const yy = m[1], mm = m[2], dd = m[3];
+  const iso = `20${yy}-${mm}-${dd}`;
+  const label = `${dd}/${mm}/20${yy}`;
+  return { fecha: iso, label };
+}
+
+function cargarIDW(archivo) {
+  return fetch('datos/' + archivo)
+    .then(r => r.text())
+    .then(text => {
+      const rows = parseCSV(text);
+      const features = rows.map(row => {
+        try {
+          const elevMax = parseFloat(row.ELEV_MAX);
+          if (elevMax === 0) return null;
+          const geom = wellknown.parse(row.WKT);
+          if (!geom) return null;
+          return {
+            type: 'Feature',
+            geometry: geom,
+            properties: {
+              fid: row.fid,
+              ID: row.ID,
+              ELEV_MIN: parseFloat(row.ELEV_MIN),
+              ELEV_MAX: elevMax,
+            }
+          };
+        } catch(e) { return null; }
+      }).filter(Boolean);
+
+      // Quitar capa anterior
+      if (idwLayer) {
+        map.removeLayer(idwLayer);
+        idwLayer = null;
+      }
+
+      const geojson = { type: 'FeatureCollection', features };
+      idwLayer = L.geoJSON(geojson, {
+        style: f => {
+          const mid = (f.properties.ELEV_MIN + f.properties.ELEV_MAX) / 2;
+          const c = elevToColor(mid);
+          return {
+            color: 'rgba(0,0,0,0.15)', weight: 0.5,
+            fillColor: c || '#000',
+            fillOpacity: c ? idwOpacity : 0
+          };
+        },
+        onEachFeature: (f, layer) => {
+          const p = f.properties;
+          layer.bindPopup(`
+            <div class="popup-inner">
+              <div class="popup-hito" style="font-size:13px;">IDW · ID ${p.ID}</div>
+              <div class="popup-row"><span>Fecha</span><span>${idwArchivos[idwIdx]?.label ?? '—'}</span></div>
+              <div class="popup-row"><span>Δ Cota mín</span><span>${p.ELEV_MIN?.toFixed(2)} mm</span></div>
+              <div class="popup-row"><span>Δ Cota máx</span><span>${p.ELEV_MAX?.toFixed(2)} mm</span></div>
+            </div>`, { maxWidth: 220 });
+          const mid = (p.ELEV_MIN + p.ELEV_MAX) / 2;
+          const hasColor = Math.abs(mid) > ELEV_DEAD_ZONE;
+          layer.on('mouseover', () => layer.setStyle({ fillOpacity: hasColor ? Math.min(1, idwOpacity + 0.15) : 0, weight: 1.5 }));
+          layer.on('mouseout',  () => idwLayer.resetStyle(layer));
+        }
+      });
+      if (idwVisible) {
+        idwLayer.addTo(map);
+        if (kmlLayer && kmlVisible) kmlLayer.bringToBack();
+      }
+    })
+    .catch(e => console.error('Error cargando IDW CSV:', archivo, e));
+}
+
+function actualizarUISlider() {
+  const cur = idwArchivos[idwIdx];
+  document.getElementById('idw-date-label').textContent = cur ? cur.label : '—';
+  if (cur) actualizarFrentes(cur.fecha);
+  document.getElementById('idw-count').textContent = `${idwIdx + 1} / ${idwArchivos.length}`;
+  document.getElementById('idw-min').textContent = idwArchivos[0]?.label ?? '—';
+  document.getElementById('idw-max').textContent = idwArchivos[idwArchivos.length - 1]?.label ?? '—';
+  document.getElementById('dateSlider').value = idwIdx;
+  document.getElementById('btn-prev').disabled = idwIdx === 0;
+  document.getElementById('btn-next').disabled = idwIdx === idwArchivos.length - 1;
+}
+
+function onSliderChange(v) {
+  const i = parseInt(v, 10);
+  if (i === idwIdx || !idwArchivos[i]) return;
+  idwIdx = i;
+  actualizarUISlider();
+  cargarIDW(idwArchivos[idwIdx].archivo);
+}
+
+function stepDate(d) {
+  const ni = Math.max(0, Math.min(idwArchivos.length - 1, idwIdx + d));
+  if (ni === idwIdx) return;
+  idwIdx = ni;
+  actualizarUISlider();
+  cargarIDW(idwArchivos[idwIdx].archivo);
+}
+
+// ── Auto-descubrimiento de archivos IDW_YYMMDD.csv ────────────────────
+// Recorre un rango de fechas y se queda con los que existen en /datos/
+// Una única llamada a la API de GitHub que lista la carpeta /datos
+// Sin spam de requests, sin rate-limit por avalancha.
+async function descubrirArchivos() {
+  const API = 'https://api.github.com/repos/l5ag/Hitos/contents/datos';
+  const r = await fetch(API);
+  if (!r.ok) throw new Error('GitHub API ' + r.status);
+  const items = await r.json();
+  const lista = items
+    .filter(i => i.type === 'file' && /^IDW_\d{6}\.csv$/i.test(i.name))
+    .map(i => i.name);
+  console.log('IDW archivos detectados:', lista);
+  return lista;
+}
+
+descubrirArchivos()
+  .then(lista => {
+    idwArchivos = lista
+      .map(a => ({ archivo: a, ...parseFechaDeNombre(a) }))
+      .sort((x, y) => x.fecha.localeCompare(y.fecha));
+
+    if (!idwArchivos.length) {
+      document.getElementById('idw-slider').style.display = 'none';
+      return;
+    }
+
+    idwIdx = idwArchivos.length - 1;
+    const slider = document.getElementById('dateSlider');
+    slider.min = 0;
+    slider.max = idwArchivos.length - 1;
+    slider.value = idwIdx;
+    actualizarUISlider();
+    cargarIDW(idwArchivos[idwIdx].archivo);
+  })
+  .catch(e => {
+    console.error('Error descubriendo archivos:', e);
+    document.getElementById('idw-slider').style.display = 'none';
+  });
+
+function toggleIDW() {
+  const btn = document.getElementById('btn-idw');
+  const legend = document.getElementById('idw-legend');
+  const slider = document.getElementById('idw-slider');
+  if (idwVisible) {
+    if (idwLayer) map.removeLayer(idwLayer);
+    btn.classList.remove('active');
+    legend.style.display = 'none';
+    slider.style.display = 'none';
+  } else {
+    if (idwLayer) {
+      map.addLayer(idwLayer);
+      if (kmlLayer && kmlVisible) kmlLayer.bringToBack();
+    }
+    btn.classList.add('active');
+    legend.style.display = 'block';
+    slider.style.display = 'flex';
+  }
+  idwVisible = !idwVisible;
+}
+
+function toggleKML() {
+  const btn = document.getElementById('btn-kml');
+  if (!kmlLayer) return;
+  if (kmlVisible) {
+    map.removeLayer(kmlLayer);
+    btn.classList.remove('active');
+  } else {
+    map.addLayer(kmlLayer);
+    kmlLayer.bringToBack();
+    btn.classList.add('active');
+  }
+  kmlVisible = !kmlVisible;
+}
+</script>
+</body>
+</html>
