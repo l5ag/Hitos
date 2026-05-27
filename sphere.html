@@ -5,9 +5,9 @@
 <title>Sener – Línea 5 FMB</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
-  body{background:#f0f0f2;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Trebuchet MS',Trebuchet,sans-serif;}
-  .grid-bg{position:absolute;inset:0;overflow:hidden;z-index:1;}
-  .grid-bg::before{content:'';position:absolute;inset:-50%;
+  body{background:#f0f0f2;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Trebuchet MS',Trebuchet,sans-serif;overflow:hidden;}
+  .grid-bg{position:fixed;inset:0;overflow:hidden;z-index:1;pointer-events:none;}
+  .grid-bg::before{content:'';position:absolute;inset:-10%;
     background-image:linear-gradient(rgba(150,150,160,0.18) 1px,transparent 1px),linear-gradient(90deg,rgba(150,150,160,0.18) 1px,transparent 1px);
     background-size:50px 50px;animation:gridmove 12s linear infinite;}
   @keyframes gridmove{from{transform:translate(0,0);}to{transform:translate(50px,50px);}}
@@ -20,8 +20,8 @@
 </style>
 </head>
 <body>
+<div class="grid-bg"></div>
 <div style="width:1280px;height:720px;position:relative;overflow:hidden;">
-  <div class="grid-bg"></div>
   <div class="halo"></div>
   <canvas id="pc" width="1280" height="720"></canvas>
 
@@ -31,7 +31,7 @@
   var ctx=canvas.getContext('2d');
   var W=1280,H=720;
   var N=6000;
-  var CX=W/2, CY=H*0.30, R=130;
+  var CX=W/2, CY=H*0.30, R=156;
 
   // 3D coords para la esfera
   var s3x=new Float32Array(N),s3y=new Float32Array(N),s3z=new Float32Array(N);
@@ -131,11 +131,11 @@
     }
   }
 
-  // Posiciones: Sener a la izquierda, ETS a la derecha (30% mayor)
+  // Posiciones: Sener a la izquierda, ETS a la derecha (ETS al doble de tamaño)
   var senerRegion={x:CX-300,y:CY-30,w:260,h:60};
-  var etsRegion={x:CX+40,y:CY-91,w:234,h:182};
+  var etsRegion={x:CX+30,y:CY-140,w:360,h:280};
   // Reparto de partículas
-  var senerCount=2200, etsCount=N-senerCount;
+  var senerCount=2000, etsCount=N-senerCount;
 
   var senerImg=new Image();
   senerImg.onload=function(){
