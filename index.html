@@ -660,20 +660,17 @@ const FRENTE_COLOR = '#a8a8a8';
 
 function makeGearIcon(name, size) {
   const s = size || 38;
+  // ABGA → engranaje "averiado": solo le quedan 4 puntas asimétricas
+  // (huecos a 45°, 180°, 225° y 315°), como si se le hubieran caído
+  const teethAngles = (name === 'ABGA') ? [0, 90, 135, 270] : [0, 45, 90, 135, 180, 225, 270, 315];
+  const teeth = teethAngles
+    .map(a => `<polygon points="0,-26 -4,-18 4,-18" transform="rotate(${a})"/>`)
+    .join('');
   return L.divIcon({
     className: '',
     html: `<svg width="${s}" height="${s}" viewBox="0 0 60 60" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,.7));transform-origin:50% 50%;animation:gear-spin 4s linear infinite;">
       <g transform="translate(30 30)">
-        <g fill="${FRENTE_COLOR}" stroke="#000" stroke-width=".8">
-          <polygon points="0,-26 -4,-18 4,-18"/>
-          <polygon points="0,-26 -4,-18 4,-18" transform="rotate(45)"/>
-          <polygon points="0,-26 -4,-18 4,-18" transform="rotate(90)"/>
-          <polygon points="0,-26 -4,-18 4,-18" transform="rotate(135)"/>
-          <polygon points="0,-26 -4,-18 4,-18" transform="rotate(180)"/>
-          <polygon points="0,-26 -4,-18 4,-18" transform="rotate(225)"/>
-          <polygon points="0,-26 -4,-18 4,-18" transform="rotate(270)"/>
-          <polygon points="0,-26 -4,-18 4,-18" transform="rotate(315)"/>
-        </g>
+        <g fill="${FRENTE_COLOR}" stroke="#000" stroke-width=".8">${teeth}</g>
         <circle r="18" fill="${FRENTE_COLOR}" stroke="#000" stroke-width="1"/>
         <circle r="6" fill="#1a1a1a"/>
       </g>
