@@ -298,9 +298,7 @@
           <div class="lg-row"><span class="lg-sw" style="background:rgb(180,30,20);"></span><span>−8</span></div>
           <div class="lg-row"><span class="lg-sw" style="background:rgb(230,100,30);"></span><span>−6</span></div>
           <div class="lg-row"><span class="lg-sw" style="background:rgb(245,180,50);"></span><span>−4</span></div>
-          <div class="lg-row"><span class="lg-sw" style="background:rgb(250,230,100);"></span><span>−2</span></div>
-          <div class="lg-row"><span class="lg-sw" style="background:transparent;border:1px dashed #6e7681;"></span><span>−1 a +1 (estable)</span></div>
-          <div class="lg-row"><span class="lg-sw" style="background:rgb(198,219,239);"></span><span>+2</span></div>
+          <div class="lg-row"><span class="lg-sw" style="background:transparent;border:1px dashed #6e7681;"></span><span>−2 a +2 (estable)</span></div>
           <div class="lg-row"><span class="lg-sw" style="background:rgb(158,202,225);"></span><span>+4</span></div>
           <div class="lg-row"><span class="lg-sw" style="background:rgb(107,174,214);"></span><span>+6</span></div>
           <div class="lg-row"><span class="lg-sw" style="background:rgb(66,146,198);"></span><span>+8</span></div>
@@ -868,7 +866,7 @@ function setIdwOpacity(v) {
 
 const ELEV_MIN_GLOBAL = -14;
 const ELEV_MAX_GLOBAL = 14;
-const ELEV_DEAD_ZONE = 1; // |val| <= 1  → transparente
+const ELEV_DEAD_ZONE = 2; // |val| <= 2  → transparente
 
 // Rampa: negativos = gama oscuro→rojo→naranja→amarillo (subsidencia), positivos = azules (alzamiento)
 const RAMP = [
@@ -889,7 +887,7 @@ const RAMP = [
 ];
 
 function elevToColor(val) {
-  if (Math.abs(val) <= ELEV_DEAD_ZONE) return null; // transparente para -1, 0, +1
+  if (Math.abs(val) <= ELEV_DEAD_ZONE) return null; // transparente para -2…+2
   const v = Math.max(ELEV_MIN_GLOBAL, Math.min(ELEV_MAX_GLOBAL, val));
   for (let i = 1; i < RAMP.length; i++) {
     if (v <= RAMP[i][0]) {
