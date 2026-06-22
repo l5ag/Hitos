@@ -159,34 +159,36 @@ function syncDispMode(cb){
 }
 // ═══ DATOS — inyectados por DAX en Power BI ═══════════════
 // RAW_DATA: definido por la medida DAX antes de cargar este script
-// Cada línea = MINIPRISMA|FECHA|X|Y|Z  (coords absolutas en metros)
+// Líneas #: coordenadas base (posición 3D) → #MP|X|Y|Z
+// Líneas normales: desplazamientos en mm → MP|FECHA|dX|dY|dZ
 
 // Parser: transforma texto plano → DATES, MPs, DISP
 const _p=(function(){
   const lines=RAW_DATA.trim().split('\n').filter(l=>l);
-  const rows=lines.map(l=>{const p=l.split('|');return{mp:p[0],f:p[1],x:+p[2],y:+p[3],z:+p[4]};});
+  // Separar cabecera (#) de datos
+  const hdrLines=lines.filter(l=>l.startsWith('#'));
+  const dataLines=lines.filter(l=>!l.startsWith('#'));
+  // MPs desde cabecera: posiciones absolutas para la escena 3D
+  const mps=hdrLines.map(l=>{const p=l.substring(1).split('|');return{n:p[0],X:+p[1],Y:+p[2],Z:+p[3]};});
+  const mpNames=mps.map(m=>m.n);
+  const mpIdx={};mpNames.forEach((n,i)=>{mpIdx[n]=i;});
+  // Parsear datos de desplazamiento
+  const rows=dataLines.map(l=>{const p=l.split('|');return{mp:p[0],f:p[1],dx:+p[2],dy:+p[3],dz:+p[4]};});
   // Fechas únicas ordenadas
   const dates=[...new Set(rows.map(r=>r.f))].sort();
-  // MPs únicos (orden de aparición)
-  const mpNames=[...new Set(rows.map(r=>r.mp))];
-  // Coordenadas base = primera lectura de cada MP
-  const base={};
-  mpNames.forEach(n=>{const r=rows.find(r=>r.mp===n);base[n]={n,X:r.x,Y:r.y,Z:r.z};});
-  // Lookup rápido mp+fecha → coords
+  // Lookup rápido mp+fecha → desplazamientos
   const lk={};rows.forEach(r=>{lk[r.mp+'|'+r.f]=r;});
-  // Construir DISP[fecha][mp]=[dX,dY,dZ,planta] en mm — forward fill si falta dato
+  // Construir DISP[fecha][mp]=[dX,dY,dZ,planta] — forward fill si falta dato
   const disp=[];
   for(let di=0;di<dates.length;di++){
     const row=[];
     for(let ni=0;ni<mpNames.length;ni++){
-      const n=mpNames[ni],b=base[n],c=lk[n+'|'+dates[di]];
+      const n=mpNames[ni],c=lk[n+'|'+dates[di]];
       if(!c){row.push(di>0?disp[di-1][ni]:[0,0,0,0]);continue;}
-      const dx=Math.round((c.x-b.X)*1e4)/10, dy=Math.round((c.y-b.Y)*1e4)/10, dz=Math.round((c.z-b.Z)*1e4)/10;
-      row.push([dx,dy,dz,Math.round(Math.sqrt(dx*dx+dy*dy)*100)/100]);
+      row.push([c.dx,c.dy,c.dz,Math.round(Math.sqrt(c.dx*c.dx+c.dy*c.dy)*100)/100]);
     }
     disp.push(row);
   }
-  const mps=mpNames.map(n=>base[n]);
   // Centroide
   const cx=mps.reduce((s,m)=>s+m.X,0)/mps.length;
   const cy=mps.reduce((s,m)=>s+m.Y,0)/mps.length;
