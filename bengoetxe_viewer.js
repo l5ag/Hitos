@@ -73,19 +73,19 @@ document.body.innerHTML=`
 <div id="toolbar">
   <div class="tb-group">
     <span class="tb-group-tag">Desplaz.</span>
-    <label class="accent-violet" data-for="chkVecTotal"><span class="tgl-dot"></span><input type="checkbox" id="chkVecTotal" onchange="syncDispMode(this);rebuild()"> Mov. Total (XYZ)</label>
-    <label class="accent-cyan on" data-for="chkNoZ"><span class="tgl-dot"></span><input type="checkbox" id="chkNoZ" onchange="syncDispMode(this);rebuild()" checked> Mov. en Planta (XY)</label>
-    <label class="accent-amber" data-for="chkAz208"><span class="tgl-dot"></span><input type="checkbox" id="chkAz208" onchange="syncDispMode(this);rebuild()"> Mov. Ortogonal</label>
+    <label class="accent-violet" data-for="chkVecTotal"><span class="tgl-dot"></span><input type="checkbox" id="chkVecTotal"> Mov. Total (XYZ)</label>
+    <label class="accent-cyan on" data-for="chkNoZ"><span class="tgl-dot"></span><input type="checkbox" id="chkNoZ" checked> Mov. en Planta (XY)</label>
+    <label class="accent-amber" data-for="chkAz208"><span class="tgl-dot"></span><input type="checkbox" id="chkAz208"> Mov. Ortogonal</label>
   </div>
   <div class="tb-group">
     <span class="tb-group-tag">Visual.</span>
-    <label class="on" data-for="chkDeform"><span class="tgl-dot"></span><input type="checkbox" id="chkDeform" onchange="syncToggle(this);rebuild()" checked> Deformar malla</label>
-    <label class="on" data-for="chkRef"><span class="tgl-dot"></span><input type="checkbox" id="chkRef" onchange="syncToggle(this);toggleRef()" checked> Geometría inicial</label>
-    <label class="on" data-for="chkArrows"><span class="tgl-dot"></span><input type="checkbox" id="chkArrows" onchange="syncToggle(this);rebuild()" checked> Flechas</label>
-    <label class="on" data-for="chkWire"><span class="tgl-dot"></span><input type="checkbox" id="chkWire" onchange="syncToggle(this);rebuild()" checked> Wireframe</label>
+    <label class="on" data-for="chkDeform"><span class="tgl-dot"></span><input type="checkbox" id="chkDeform" checked> Deformar malla</label>
+    <label class="on" data-for="chkRef"><span class="tgl-dot"></span><input type="checkbox" id="chkRef" checked> Geometría inicial</label>
+    <label class="on" data-for="chkArrows"><span class="tgl-dot"></span><input type="checkbox" id="chkArrows" checked> Flechas</label>
+    <label class="on" data-for="chkWire"><span class="tgl-dot"></span><input type="checkbox" id="chkWire" checked> Wireframe</label>
   </div>
   <div class="tb-group">
-    <label class="accent-teal" data-for="chkScope"><span class="tgl-dot"></span><input type="checkbox" id="chkScope" onchange="syncToggle(this);toggleScope()"> Scope Box</label>
+    <label class="accent-teal" data-for="chkScope"><span class="tgl-dot"></span><input type="checkbox" id="chkScope"> Scope Box</label>
   </div>
   <span id="tip">Pasa el ratón sobre un prisma</span>
 </div>
@@ -122,11 +122,23 @@ document.body.innerHTML=`
 </div>
 
 <div id="bottombar">
-  <button id="playBtn" onclick="togglePlay()">▶ Play</button>
-  <input type="range" id="slider" min="0" max="196" value="0" step="1" oninput="onSlider(+this.value)">
+  <button id="playBtn">▶ Play</button>
+  <input type="range" id="slider" min="0" max="196" value="0" step="1">
   <span id="dlabel">2025-07-29</span>
 </div>
 `;
+
+// ── Registrar event listeners (inline handlers bloqueados por CSP) ──
+document.getElementById('chkVecTotal').addEventListener('change',function(){syncDispMode(this);rebuild();});
+document.getElementById('chkNoZ').addEventListener('change',function(){syncDispMode(this);rebuild();});
+document.getElementById('chkAz208').addEventListener('change',function(){syncDispMode(this);rebuild();});
+document.getElementById('chkDeform').addEventListener('change',function(){syncToggle(this);rebuild();});
+document.getElementById('chkRef').addEventListener('change',function(){syncToggle(this);toggleRef();});
+document.getElementById('chkArrows').addEventListener('change',function(){syncToggle(this);rebuild();});
+document.getElementById('chkWire').addEventListener('change',function(){syncToggle(this);rebuild();});
+document.getElementById('chkScope').addEventListener('change',function(){syncToggle(this);toggleScope();});
+document.getElementById('playBtn').addEventListener('click',function(){togglePlay();});
+document.getElementById('slider').addEventListener('input',function(){onSlider(+this.value);});
 
 // ── Código del visor ──────────────────────────────────────
 // ── Toggle pill sync ─────────────────────────────────────
