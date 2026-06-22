@@ -728,6 +728,9 @@ function togglePlay(){
   else clearInterval(playTimer);
 }
 
+// ── Esperar al layout del DOM antes de inicializar Three.js ──
+requestAnimationFrame(function(){
+
 document.getElementById('slider').max=DATES.length-1;
 initThree();
 buildRefGroup();  // geometría de referencia fija (se construye una sola vez)
@@ -903,4 +906,6 @@ function resetScope(){
 document.getElementById('c3d').addEventListener('dblclick',()=>{
   if(scopeActive) resetScope();
 });
+
+}); // fin requestAnimationFrame
 })();
