@@ -174,13 +174,18 @@ const _p=(function(){
   mpNames.forEach(n=>{const r=rows.find(r=>r.mp===n);base[n]={n,X:r.x,Y:r.y,Z:r.z};});
   // Lookup rápido mp+fecha → coords
   const lk={};rows.forEach(r=>{lk[r.mp+'|'+r.f]=r;});
-  // Construir DISP[fecha][mp]=[dX,dY,dZ,planta] en mm
-  const disp=dates.map(f=>mpNames.map(n=>{
-    const b=base[n],c=lk[n+'|'+f];
-    if(!c) return [0,0,0,0];
-    const dx=Math.round((c.x-b.X)*1e4)/10, dy=Math.round((c.y-b.Y)*1e4)/10, dz=Math.round((c.z-b.Z)*1e4)/10;
-    return [dx,dy,dz,Math.round(Math.sqrt(dx*dx+dy*dy)*100)/100];
-  }));
+  // Construir DISP[fecha][mp]=[dX,dY,dZ,planta] en mm — forward fill si falta dato
+  const disp=[];
+  for(let di=0;di<dates.length;di++){
+    const row=[];
+    for(let ni=0;ni<mpNames.length;ni++){
+      const n=mpNames[ni],b=base[n],c=lk[n+'|'+dates[di]];
+      if(!c){row.push(di>0?disp[di-1][ni]:[0,0,0,0]);continue;}
+      const dx=Math.round((c.x-b.X)*1e4)/10, dy=Math.round((c.y-b.Y)*1e4)/10, dz=Math.round((c.z-b.Z)*1e4)/10;
+      row.push([dx,dy,dz,Math.round(Math.sqrt(dx*dx+dy*dy)*100)/100]);
+    }
+    disp.push(row);
+  }
   const mps=mpNames.map(n=>base[n]);
   // Centroide
   const cx=mps.reduce((s,m)=>s+m.X,0)/mps.length;
