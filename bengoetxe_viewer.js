@@ -8,8 +8,9 @@
 // ── Inyectar CSS ──────────────────────────────────────────
 const _style=document.createElement('style');
 _style.textContent=`
+html,body{height:100%;width:100%}
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#070c18;color:#ccc;font-family:system-ui,sans-serif;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+body{background:#070c18;color:#ccc;font-family:system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden}
 
 /* Power BI embed — no header */
 
@@ -606,16 +607,28 @@ function toggleRef(){
 
 function initThree(){
   const el=document.getElementById('c3d');
+  // Fallback: si flex no dio dimensiones, forzar tamaño
+  if(!el.clientWidth||!el.clientHeight){
+    el.style.width='100%';el.style.height='100%';
+    el.style.position='absolute';el.style.top='0';el.style.left='0';
+  }
+  const w=el.clientWidth||800, h=el.clientHeight||600;
   renderer=new THREE.WebGLRenderer({antialias:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-  renderer.setSize(el.clientWidth,el.clientHeight);
+  renderer.setSize(w,h);
   renderer.setClearColor(0x070c18,1);
   el.appendChild(renderer.domElement);
   scene=new THREE.Scene();
-  camera=new THREE.PerspectiveCamera(42,el.clientWidth/el.clientHeight,0.1,1000);
+  camera=new THREE.PerspectiveCamera(42,w/h,0.1,1000);
   scene.add(new THREE.AmbientLight(0xffffff,0.88));
   const dl=new THREE.DirectionalLight(0xffffff,0.6);dl.position.set(40,80,50);scene.add(dl);
   const dl2=new THREE.DirectionalLight(0x6688aa,0.3);dl2.position.set(-30,20,-40);scene.add(dl2);
+  // Resize handler
+  window.addEventListener('resize',()=>{
+    const rw=el.clientWidth||800,rh=el.clientHeight||600;
+    renderer.setSize(rw,rh);
+    camera.aspect=rw/rh;camera.updateProjectionMatrix();
+  });
 
   const cv=renderer.domElement;
   let handleDragInfo=null;
@@ -729,7 +742,7 @@ function togglePlay(){
 }
 
 // ── Esperar al layout del DOM antes de inicializar Three.js ──
-requestAnimationFrame(function(){
+setTimeout(function(){
 
 document.getElementById('slider').max=DATES.length-1;
 initThree();
@@ -907,5 +920,5 @@ document.getElementById('c3d').addEventListener('dblclick',()=>{
   if(scopeActive) resetScope();
 });
 
-}); // fin requestAnimationFrame
+}, 300); // fin setTimeout
 })();
