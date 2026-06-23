@@ -760,14 +760,6 @@ function togglePlay(){
   else clearInterval(playTimer);
 }
 
-// ── Esperar al layout del DOM antes de inicializar Three.js ──
-setTimeout(function(){
-
-document.getElementById('slider').max=DATES.length-1;
-initThree();
-buildRefGroup();  // geometría de referencia fija (se construye una sola vez)
-rebuild(0);
-
 // ── Scope Box with draggable face handles ────────────────
 const W_DX=0.8826, W_DZ=0.4702;
 const P_DX=-0.4702, P_DZ=0.8826;
@@ -939,5 +931,11 @@ document.getElementById('c3d').addEventListener('dblclick',()=>{
   if(scopeActive) resetScope();
 });
 
+// ── Esperar al layout del DOM antes de inicializar Three.js ──
+setTimeout(function(){
+  document.getElementById('slider').max=DATES.length-1;
+  initThree();
+  buildRefGroup();
+  rebuild(0);
 }, 300); // fin setTimeout
 })();
