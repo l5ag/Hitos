@@ -231,10 +231,33 @@
 
     var bandGroup = null, hitoGroup = null;
     // Parámetros de interpolación (ajustables desde el panel)
-    var interpMode = 'exact';   // 'exact' = solo hitos medidos esa fecha (como QGIS) | 'accum' = última medición ≤ fecha
+    var interpMode = 'accum';   // 'accum' = última medición ≤ fecha | 'exact' = solo hitos medidos esa fecha
     var idwPower = 2;           // exponente IDW (QGIS usa 2 por defecto)
     var EXT_PAD = 40;           // margen del ráster alrededor de los puntos (m)
     var MAX_CELLS = 200000;     // tope de celdas (celda adaptativa)
+    var CLUSTER_DIST = 250;     // distancia máx (m) para agrupar hitos en una misma superficie
+
+    // Agrupa puntos en cúmulos espaciales (unión por cercanía < CLUSTER_DIST)
+    function clusterPts(pts, dist) {
+      var d2max = dist * dist, clusters = [];
+      var assigned = new Array(pts.length);
+      for (var i = 0; i < pts.length; i++) assigned[i] = -1;
+      for (var s = 0; s < pts.length; s++) {
+        if (assigned[s] >= 0) continue;
+        var idc = clusters.length, stack = [s], cl = [pts[s]];
+        assigned[s] = idc;
+        while (stack.length) {
+          var a = stack.pop();
+          for (var j = 0; j < pts.length; j++) {
+            if (assigned[j] >= 0) continue;
+            var dx = pts[a].x - pts[j].x, dy = pts[a].y - pts[j].y;
+            if (dx * dx + dy * dy <= d2max) { assigned[j] = idc; cl.push(pts[j]); stack.push(j); }
+          }
+        }
+        clusters.push(cl);
+      }
+      return clusters;
+    }
 
     function tooltip(fecha, lo, hi) {
       return '<div style="font-family:Consolas,monospace;font-size:11px;min-width:150px;">'
@@ -255,7 +278,26 @@
       if (hitoGroup) { map.removeLayer(hitoGroup); hitoGroup = null; }
       if (!pts.length) return;
 
-      // Extensión local: bbox de los puntos ACTIVOS + margen (como el ráster de QGIS)
+      bandGroup = L.featureGroup();
+
+      // Una superficie IDW independiente por cúmulo de hitos (como los ráster de QGIS)
+      clusterPts(pts, CLUSTER_DIST).forEach(function (cpts) {
+        if (cpts.length < 3) return;
+        renderSurface(cpts, fecha);
+      });
+      bandGroup.addTo(map);
+
+      hitoGroup = L.featureGroup();
+      pts.forEach(function (p) {
+        L.marker([p.lat, p.lon], { icon: icon })
+          .bindTooltip('<b style="color:#2be2ec">' + p.id + '</b><br>Δ Cota: <b>' + p.dz.toFixed(1) + ' mm</b>', { direction: 'top', offset: [0, -6], className: 'idw-tt' })
+          .addTo(hitoGroup);
+      });
+      hitoGroup.addTo(map);
+    }
+
+    function renderSurface(pts, fecha) {
+      // Extensión local: bbox de los puntos del cúmulo + margen
       var xs = pts.map(function (p) { return p.x; }), ys = pts.map(function (p) { return p.y; });
       var bbox = {
         w: Math.min.apply(null, xs) - EXT_PAD, e: Math.max.apply(null, xs) + EXT_PAD,
@@ -298,7 +340,6 @@
         jobs.push({ level: b.level, invert: false, color: b.color, deep: false, lo: b.level, hi: next ? next.level : Math.max(mx, b.level) });
       });
 
-      bandGroup = L.featureGroup();
       jobs.forEach(function (job) {
         var segs;
         if (job.invert) {
@@ -317,15 +358,6 @@
         }).bindTooltip(tooltip(fecha, job.lo, job.hi), { sticky: true, className: 'idw-tt', direction: 'top' })
           .addTo(bandGroup);
       });
-      bandGroup.addTo(map);
-
-      hitoGroup = L.featureGroup();
-      pts.forEach(function (p) {
-        L.marker([p.lat, p.lon], { icon: icon })
-          .bindTooltip('<b style="color:#2be2ec">' + p.id + '</b><br>Δ Cota: <b>' + p.dz.toFixed(1) + ' mm</b>', { direction: 'top', offset: [0, -6], className: 'idw-tt' })
-          .addTo(hitoGroup);
-      });
-      hitoGroup.addTo(map);
     }
 
     // Badge de fecha (arriba-dcha) — solo cuando no hay slider
@@ -460,11 +492,11 @@
     // Interpolación: modo + exponente
     var sInt = section('Interpolación');
     var mExact = document.createElement('button');
-    mExact.className = 'idw-lbtn active';
+    mExact.className = 'idw-lbtn';
     mExact.textContent = 'Fecha exacta';
     mExact.title = 'Solo hitos medidos en la fecha seleccionada (como QGIS)';
     var mAccum = document.createElement('button');
-    mAccum.className = 'idw-lbtn';
+    mAccum.className = 'idw-lbtn active';
     mAccum.textContent = 'Acumulado';
     mAccum.title = 'Última medición de cada hito hasta la fecha seleccionada';
     function setMode(m) {
@@ -493,7 +525,7 @@
     });
     pw.addEventListener('input', function () { pwVal.textContent = (+pw.value).toFixed(1); });
     pRow.appendChild(pLab); pRow.appendChild(pw); pRow.appendChild(pwVal);
-    sInt.appendChild(mExact); sInt.appendChild(mAccum); sInt.appendChild(pRow);
+    sInt.appendChild(mAccum); sInt.appendChild(mExact); sInt.appendChild(pRow);
     panel.appendChild(sInt);
 
     // IDW: toggle + opacidad
