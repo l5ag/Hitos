@@ -193,20 +193,6 @@
     var mLat = 111320, mLon = 111320 * Math.cos(lat0 * Math.PI / 180);
     data.hitos.forEach(function (h) { h.x = h.lon * mLon; h.y = h.lat * mLat; });
 
-    var xs = data.hitos.map(function (p) { return p.x; }), ys = data.hitos.map(function (p) { return p.y; });
-    var bbox = {
-      w: Math.min.apply(null, xs) - PAD, e: Math.max.apply(null, xs) + PAD,
-      s: Math.min.apply(null, ys) - PAD, n: Math.max.apply(null, ys) + PAD
-    };
-    var W = Math.round((bbox.e - bbox.w) / CELL), H = Math.round((bbox.n - bbox.s) / CELL);
-    var PW = W + 2, PH = H + 2;
-    var xSpan = bbox.e - bbox.w, ySpan = bbox.n - bbox.s;
-    function gToLL(pt) {
-      var xm = bbox.w + xSpan * (pt[0] - 1) / (W - 1);
-      var ym = bbox.n - ySpan * (pt[1] - 1) / (H - 1);
-      return [ym / mLat, xm / mLon];
-    }
-
     var map = L.map(root, { zoomControl: false, attributionControl: false, maxZoom: 20 });
     L.control.zoom({ position: 'topright' }).addTo(map);
     var baseLayers = {
@@ -244,6 +230,11 @@
     });
 
     var bandGroup = null, hitoGroup = null;
+    // Parámetros de interpolación (ajustables desde el panel)
+    var interpMode = 'exact';   // 'exact' = solo hitos medidos esa fecha (como QGIS) | 'accum' = última medición ≤ fecha
+    var idwPower = 2;           // exponente IDW (QGIS usa 2 por defecto)
+    var EXT_PAD = 40;           // margen del ráster alrededor de los puntos (m)
+    var MAX_CELLS = 200000;     // tope de celdas (celda adaptativa)
 
     function tooltip(fecha, lo, hi) {
       return '<div style="font-family:Consolas,monospace;font-size:11px;min-width:150px;">'
@@ -257,14 +248,37 @@
       var fecha = data.fechas[idx];
       var pts = [];
       data.hitos.forEach(function (h) {
-        var dz = dzAt(h, idx);
-        if (dz !== null) pts.push({ id: h.id, lat: h.lat, lon: h.lon, x: h.x, y: h.y, dz: dz });
+        var dz = interpMode === 'exact' ? h.serie[idx] : dzAt(h, idx);
+        if (dz !== null && dz !== undefined && !isNaN(dz)) pts.push({ id: h.id, lat: h.lat, lon: h.lon, x: h.x, y: h.y, dz: dz });
       });
       if (bandGroup) { map.removeLayer(bandGroup); bandGroup = null; }
       if (hitoGroup) { map.removeLayer(hitoGroup); hitoGroup = null; }
       if (!pts.length) return;
 
-      var grid = computeGrid(pts, bbox, W, H, 2);
+      // Extensión local: bbox de los puntos ACTIVOS + margen (como el ráster de QGIS)
+      var xs = pts.map(function (p) { return p.x; }), ys = pts.map(function (p) { return p.y; });
+      var bbox = {
+        w: Math.min.apply(null, xs) - EXT_PAD, e: Math.max.apply(null, xs) + EXT_PAD,
+        s: Math.min.apply(null, ys) - EXT_PAD, n: Math.max.apply(null, ys) + EXT_PAD
+      };
+      // Celda adaptativa: parte de CELL y crece si la malla supera MAX_CELLS
+      var cell = CELL;
+      var W = Math.max(8, Math.round((bbox.e - bbox.w) / cell));
+      var H = Math.max(8, Math.round((bbox.n - bbox.s) / cell));
+      if (W * H > MAX_CELLS) {
+        cell *= Math.sqrt(W * H / MAX_CELLS);
+        W = Math.max(8, Math.round((bbox.e - bbox.w) / cell));
+        H = Math.max(8, Math.round((bbox.n - bbox.s) / cell));
+      }
+      var PW = W + 2, PH = H + 2;
+      var xSpan = bbox.e - bbox.w, ySpan = bbox.n - bbox.s;
+      function gToLL(pt) {
+        var xm = bbox.w + xSpan * (pt[0] - 1) / (W - 1);
+        var ym = bbox.n - ySpan * (pt[1] - 1) / (H - 1);
+        return [ym / mLat, xm / mLon];
+      }
+
+      var grid = computeGrid(pts, bbox, W, H, idwPower);
       var pg = new Float64Array(PW * PH);
       for (var r = 0; r < H; r++) pg.set(grid.subarray(r * W, r * W + W), (r + 1) * PW + 1);
 
@@ -442,6 +456,45 @@
       sBase.appendChild(b);
     });
     panel.appendChild(sBase);
+
+    // Interpolación: modo + exponente
+    var sInt = section('Interpolación');
+    var mExact = document.createElement('button');
+    mExact.className = 'idw-lbtn active';
+    mExact.textContent = 'Fecha exacta';
+    mExact.title = 'Solo hitos medidos en la fecha seleccionada (como QGIS)';
+    var mAccum = document.createElement('button');
+    mAccum.className = 'idw-lbtn';
+    mAccum.textContent = 'Acumulado';
+    mAccum.title = 'Última medición de cada hito hasta la fecha seleccionada';
+    function setMode(m) {
+      if (interpMode === m) return;
+      interpMode = m;
+      mExact.classList.toggle('active', m === 'exact');
+      mAccum.classList.toggle('active', m === 'accum');
+      update(current);
+    }
+    mExact.addEventListener('click', function () { setMode('exact'); });
+    mAccum.addEventListener('click', function () { setMode('accum'); });
+    var pRow = document.createElement('div');
+    pRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:2px;';
+    var pLab = document.createElement('span');
+    pLab.textContent = 'Exp.';
+    pLab.style.cssText = 'font-size:10px;color:#7d8590;';
+    var pw = document.createElement('input');
+    pw.type = 'range'; pw.min = 1; pw.max = 4; pw.step = 0.5; pw.value = idwPower;
+    pw.className = 'idw-mini'; pw.style.flex = '1';
+    var pwVal = document.createElement('span');
+    pwVal.textContent = idwPower.toFixed(1);
+    pwVal.style.cssText = 'font-size:10px;color:#388bfd;min-width:26px;text-align:right;';
+    pw.addEventListener('change', function () {
+      idwPower = +pw.value; pwVal.textContent = idwPower.toFixed(1);
+      update(current);
+    });
+    pw.addEventListener('input', function () { pwVal.textContent = (+pw.value).toFixed(1); });
+    pRow.appendChild(pLab); pRow.appendChild(pw); pRow.appendChild(pwVal);
+    sInt.appendChild(mExact); sInt.appendChild(mAccum); sInt.appendChild(pRow);
+    panel.appendChild(sInt);
 
     // IDW: toggle + opacidad
     var sIdw = section('IDW Cotas');
