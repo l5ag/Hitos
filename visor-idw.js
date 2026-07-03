@@ -207,8 +207,15 @@
       return [ym / mLat, xm / mLon];
     }
 
-    var map = L.map(root, { zoomControl: true, attributionControl: false, maxZoom: 20 });
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20, maxNativeZoom: 18 }).addTo(map);
+    var map = L.map(root, { zoomControl: false, attributionControl: false, maxZoom: 20 });
+    L.control.zoom({ position: 'topright' }).addTo(map);
+    var baseLayers = {
+      sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20, maxNativeZoom: 18 }),
+      osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 19 }),
+      topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 20, maxNativeZoom: 17 })
+    };
+    var activeBase = 'sat';
+    baseLayers.sat.addTo(map);
     var llBounds = L.latLngBounds(data.hitos.map(function (p) { return [p.lat, p.lon]; }));
     map.fitBounds(llBounds, { padding: [30, 30] });
     map.createPane('bands');
@@ -218,9 +225,16 @@
     var ttStyle = document.createElement('style');
     ttStyle.textContent =
       '.idw-tt{background:#161b22!important;color:#e6edf3!important;border:1px solid #2be2ec!important;border-radius:6px!important;font-size:12px!important;padding:5px 9px!important;white-space:nowrap;}' +
-      '.idw-range{-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:#30363d;outline:none;cursor:pointer;}' +
-      '.idw-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:#2be2ec;border:2px solid #0d1117;box-shadow:0 0 0 1px #2be2ec;cursor:pointer;}' +
-      '.idw-range::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#2be2ec;border:2px solid #0d1117;cursor:pointer;}';
+      '.idw-range{-webkit-appearance:none;appearance:none;height:6px;border-radius:3px;background:#30363d;outline:none;cursor:pointer;}' +
+      '.idw-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:#388bfd;border:none;box-shadow:0 1px 4px rgba(0,0,0,.5);cursor:pointer;}' +
+      '.idw-range::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:#388bfd;border:none;cursor:pointer;}' +
+      '.idw-btn{width:26px;height:24px;border-radius:4px;border:1px solid #30363d;background:#21262d;color:#e6edf3;font:700 12px Consolas,monospace;cursor:pointer;line-height:1;flex-shrink:0;}' +
+      '.idw-btn:hover{border-color:#388bfd;color:#388bfd;}' +
+      '.idw-lbtn{display:block;width:100%;text-align:left;padding:5px 9px;margin-bottom:4px;border-radius:5px;border:1px solid #30363d;background:#21262d;color:#e6edf3;font:12px Consolas,monospace;cursor:pointer;}' +
+      '.idw-lbtn.active{border-color:#388bfd;color:#388bfd;background:rgba(56,139,253,.15);}' +
+      '.idw-mini{-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:#30363d;outline:none;cursor:pointer;width:100%;}' +
+      '.idw-mini::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:12px;border-radius:50%;background:#388bfd;border:none;cursor:pointer;}' +
+      '.idw-mini::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#388bfd;border:none;cursor:pointer;}';
     document.head.appendChild(ttStyle);
 
     var icon = L.divIcon({
@@ -300,16 +314,19 @@
       hitoGroup.addTo(map);
     }
 
-    // Badge de fecha (arriba-dcha)
+    // Badge de fecha (arriba-dcha) — solo cuando no hay slider
     var badge = document.createElement('div');
-    badge.style.cssText = 'position:absolute;top:10px;right:10px;z-index:1000;font:700 14px Consolas,monospace;color:#388bfd;background:rgba(22,27,34,.92);border:1px solid #388bfd;border-radius:99px;padding:4px 14px;';
+    badge.style.cssText = 'position:absolute;top:10px;left:186px;z-index:1000;font:700 14px Consolas,monospace;color:#388bfd;background:rgba(22,27,34,.92);border:1px solid #388bfd;border-radius:99px;padding:4px 14px;';
+    if (nF > 1) badge.style.display = 'none';
     root.appendChild(badge);
 
     var current = nF - 1;
     var pending = null, timer = null;
+    var syncUI = function () {};
     function requestUpdate(idx) {
       current = idx;
       badge.textContent = data.fechas[idx];
+      syncUI();
       pending = idx;
       if (timer) return;
       timer = setTimeout(function () {
@@ -318,44 +335,145 @@
       }, 120);
     }
 
-    // Slider de fechas (solo si hay más de una)
+    // Barra de fechas (solo si hay más de una)
     if (nF > 1) {
       var bar = document.createElement('div');
-      bar.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);bottom:14px;z-index:1000;display:flex;align-items:center;gap:12px;background:rgba(22,27,34,.94);border:1px solid #30363d;border-radius:99px;padding:8px 18px;font-family:Consolas,monospace;box-shadow:0 4px 16px rgba(0,0,0,.45);';
-      var play = document.createElement('button');
-      play.textContent = '▶';
-      play.style.cssText = 'width:26px;height:26px;border-radius:50%;border:1px solid #2be2ec;background:transparent;color:#2be2ec;font-size:11px;cursor:pointer;flex-shrink:0;line-height:1;';
+      bar.style.cssText = 'position:absolute;left:207px;right:10px;bottom:10px;z-index:1000;display:flex;align-items:center;gap:14px;background:rgba(13,17,23,.92);border:1px solid #30363d;border-radius:6px;padding:8px 14px;font-family:Consolas,monospace;box-shadow:0 4px 16px rgba(0,0,0,.45);';
       var lab0 = document.createElement('span');
       lab0.textContent = data.fechas[0];
-      lab0.style.cssText = 'font-size:11px;color:#7d8590;';
+      lab0.style.cssText = 'font-size:12px;color:#e6edf3;flex-shrink:0;';
       var range = document.createElement('input');
       range.type = 'range'; range.min = 0; range.max = nF - 1; range.step = 1; range.value = nF - 1;
       range.className = 'idw-range';
-      range.style.width = Math.min(320, 40 + nF * 22) + 'px';
+      range.style.cssText = 'flex:1;min-width:80px;';
       var lab1 = document.createElement('span');
       lab1.textContent = data.fechas[nF - 1];
-      lab1.style.cssText = 'font-size:11px;color:#7d8590;';
-      bar.appendChild(play); bar.appendChild(lab0); bar.appendChild(range); bar.appendChild(lab1);
+      lab1.style.cssText = 'font-size:12px;color:#7d8590;flex-shrink:0;';
+      var count = document.createElement('span');
+      count.style.cssText = 'font-size:12px;color:#7d8590;flex-shrink:0;';
+      var prev = document.createElement('button');
+      prev.textContent = '‹'; prev.className = 'idw-btn';
+      var next = document.createElement('button');
+      next.textContent = '›'; next.className = 'idw-btn';
+      var cur = document.createElement('span');
+      cur.style.cssText = 'font:700 13px Consolas,monospace;color:#388bfd;flex-shrink:0;';
+      bar.appendChild(lab0); bar.appendChild(range); bar.appendChild(lab1);
+      bar.appendChild(count); bar.appendChild(prev); bar.appendChild(next); bar.appendChild(cur);
       root.appendChild(bar);
 
-      range.addEventListener('input', function () { requestUpdate(+range.value); });
+      syncUI = function () {
+        var p = nF > 1 ? current / (nF - 1) * 100 : 100;
+        range.value = current;
+        range.style.background = 'linear-gradient(to right,#388bfd 0%,#388bfd ' + p + '%,#30363d ' + p + '%,#30363d 100%)';
+        count.textContent = (current + 1) + ' / ' + nF;
+        cur.textContent = data.fechas[current];
+      };
 
-      var playing = null;
-      play.addEventListener('click', function () {
-        if (playing) { clearInterval(playing); playing = null; play.textContent = '▶'; return; }
-        play.textContent = '❚❚';
-        var i = (current >= nF - 1) ? -1 : current;
-        playing = setInterval(function () {
-          i++;
-          if (i >= nF) { clearInterval(playing); playing = null; play.textContent = '▶'; return; }
-          range.value = i;
-          requestUpdate(i);
-        }, 900);
-      });
+      range.addEventListener('input', function () { requestUpdate(+range.value); });
+      prev.addEventListener('click', function () { if (current > 0) requestUpdate(current - 1); });
+      next.addEventListener('click', function () { if (current < nF - 1) requestUpdate(current + 1); });
 
       // Evitar que arrastrar el slider mueva el mapa
       L.DomEvent.disableClickPropagation(bar);
+      syncUI();
     }
+
+    // ── Panel de control (Reproductor · Capas base · IDW) ────────────────
+    var panel = document.createElement('div');
+    panel.style.cssText = 'position:absolute;top:0;bottom:0;left:0;z-index:1000;width:172px;overflow-y:auto;background:rgba(13,17,23,.94);border-right:1px solid #30363d;padding:12px;font-family:Consolas,monospace;color:#e6edf3;box-shadow:4px 0 16px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:12px;';
+    function section(title) {
+      var s = document.createElement('div');
+      var h = document.createElement('div');
+      h.textContent = title;
+      h.style.cssText = 'font:700 10px Consolas,monospace;letter-spacing:.08em;color:#7d8590;text-transform:uppercase;margin-bottom:6px;';
+      s.appendChild(h);
+      return s;
+    }
+
+    // Reproductor (solo con más de una fecha)
+    if (nF > 1) {
+      var speed = 800, playing = null;
+      var sRep = section('Reproductor');
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;';
+      var playBtn = document.createElement('button');
+      playBtn.textContent = '▶';
+      playBtn.className = 'idw-btn';
+      var spd = document.createElement('input');
+      spd.type = 'range'; spd.min = 200; spd.max = 2000; spd.step = 100; spd.value = speed;
+      spd.className = 'idw-mini'; spd.style.flex = '1';
+      var spdVal = document.createElement('span');
+      spdVal.textContent = speed + 'ms';
+      spdVal.style.cssText = 'font-size:10px;color:#388bfd;min-width:44px;text-align:right;';
+      var stopPlay = function () { clearInterval(playing); playing = null; playBtn.textContent = '▶'; };
+      var startPlay = function () {
+        playBtn.textContent = '❚❚';
+        playing = setInterval(function () {
+          requestUpdate(current >= nF - 1 ? 0 : current + 1);
+        }, speed);
+      };
+      playBtn.addEventListener('click', function () { if (playing) stopPlay(); else startPlay(); });
+      spd.addEventListener('input', function () {
+        speed = +spd.value; spdVal.textContent = speed + 'ms';
+        if (playing) { clearInterval(playing); playing = setInterval(function () { requestUpdate(current >= nF - 1 ? 0 : current + 1); }, speed); }
+      });
+      row.appendChild(playBtn); row.appendChild(spd); row.appendChild(spdVal);
+      sRep.appendChild(row);
+      panel.appendChild(sRep);
+    }
+
+    // Capas base
+    var sBase = section('Capas base');
+    var baseNames = { sat: '🛰 Satélite', osm: '🗺 Calles', topo: '⛰ Topográfico' };
+    var baseBtns = {};
+    Object.keys(baseNames).forEach(function (k) {
+      var b = document.createElement('button');
+      b.className = 'idw-lbtn' + (k === activeBase ? ' active' : '');
+      b.textContent = baseNames[k];
+      b.addEventListener('click', function () {
+        if (k === activeBase) return;
+        map.removeLayer(baseLayers[activeBase]);
+        baseLayers[k].addTo(map);
+        baseBtns[activeBase].classList.remove('active');
+        activeBase = k;
+        b.classList.add('active');
+      });
+      baseBtns[k] = b;
+      sBase.appendChild(b);
+    });
+    panel.appendChild(sBase);
+
+    // IDW: toggle + opacidad
+    var sIdw = section('IDW Cotas');
+    var tgl = document.createElement('button');
+    tgl.className = 'idw-lbtn active';
+    tgl.textContent = '🌡 Bandas IDW';
+    var idwOn = true;
+    tgl.addEventListener('click', function () {
+      idwOn = !idwOn;
+      map.getPane('bands').style.display = idwOn ? '' : 'none';
+      tgl.classList.toggle('active', idwOn);
+    });
+    var oRow = document.createElement('div');
+    oRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:2px;';
+    var oLab = document.createElement('span');
+    oLab.textContent = 'Opac.';
+    oLab.style.cssText = 'font-size:10px;color:#7d8590;';
+    var op = document.createElement('input');
+    op.type = 'range'; op.min = 0; op.max = 100; op.step = 1; op.value = 78;
+    op.className = 'idw-mini'; op.style.flex = '1';
+    var opVal = document.createElement('span');
+    opVal.textContent = '78%';
+    opVal.style.cssText = 'font-size:10px;color:#388bfd;min-width:32px;text-align:right;';
+    op.addEventListener('input', function () {
+      map.getPane('bands').style.opacity = op.value / 100;
+      opVal.textContent = op.value + '%';
+    });
+    oRow.appendChild(oLab); oRow.appendChild(op); oRow.appendChild(opVal);
+    sIdw.appendChild(tgl); sIdw.appendChild(oRow);
+    panel.appendChild(sIdw);
+    root.appendChild(panel);
+    L.DomEvent.disableClickPropagation(panel);
 
     // Diagnóstico: aviso si no hay ninguna medición válida
     var totalMed = 0;
