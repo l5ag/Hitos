@@ -23,16 +23,16 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
-  var VERSION = 'v10';
+  var VERSION = 'v11';
 
   // ── Escala de colores (anclas cada 2 mm, bandas cada 1 mm) ────────────────
   var NEG_ANCHORS = [
-    [-2, [250, 210, 120]], [-4, [232, 190, 70]], [-6, [196, 58, 28]],
-    [-8, [141, 27, 27]], [-10, [93, 18, 22]], [-14, [43, 10, 14]]
+    [-2, [250, 230, 100]], [-4, [245, 180, 50]], [-6, [230, 100, 30]],
+    [-8, [180, 30, 20]], [-10, [80, 0, 0]], [-14, [40, 0, 0]]
   ];
   var POS_ANCHORS = [
-    [2, [148, 196, 223]], [4, [104, 170, 207]], [6, [64, 141, 191]],
-    [8, [39, 108, 170]], [10, [26, 77, 138]], [14, [16, 42, 99]]
+    [2, [198, 219, 239]], [4, [158, 202, 225]], [6, [107, 174, 214]],
+    [8, [66, 146, 198]], [10, [33, 113, 181]], [14, [8, 48, 107]]
   ];
   function rampColor(anchors, v) {
     var a = anchors;
@@ -48,9 +48,9 @@
   }
   var NEG_LEVELS = [], POS_LEVELS = [], v;
   for (v = -2; v >= -13; v--) NEG_LEVELS.push({ level: v, color: rampColor(NEG_ANCHORS, v - 0.5), deep: v <= -10 });
-  NEG_LEVELS.push({ level: -14, color: '43,10,14', deep: true });
+  NEG_LEVELS.push({ level: -14, color: '40,0,0', deep: true });
   for (v = 2; v <= 13; v++) POS_LEVELS.push({ level: v, color: rampColor(POS_ANCHORS, v + 0.5) });
-  POS_LEVELS.push({ level: 14, color: '16,42,99' });
+  POS_LEVELS.push({ level: 14, color: '8,48,107' });
 
   // ── Carga dinámica de Leaflet ──────────────────────────────────────────────
   function loadLeaflet(cb) {
@@ -587,7 +587,33 @@
       opVal.textContent = op.value + '%';
     });
     oRow.appendChild(oLab); oRow.appendChild(op); oRow.appendChild(opVal);
-    sIdw.appendChild(tgl); sIdw.appendChild(oRow);
+    // Leyenda Δ Cota (mm) — misma que index.html
+    var lg = document.createElement('div');
+    lg.style.cssText = 'margin-top:8px;display:flex;flex-direction:column;gap:3px;';
+    [
+      ['rgb(40,0,0)', '≤ −14 (subsidencia)'],
+      ['rgb(80,0,0)', '−10'],
+      ['rgb(180,30,20)', '−8'],
+      ['rgb(230,100,30)', '−6'],
+      ['rgb(245,180,50)', '−4'],
+      [null, '−2 a +2 (estable)'],
+      ['rgb(158,202,225)', '+4'],
+      ['rgb(107,174,214)', '+6'],
+      ['rgb(66,146,198)', '+8'],
+      ['rgb(33,113,181)', '+10'],
+      ['rgb(8,48,107)', '≥ +14 (alzamiento)']
+    ].forEach(function (rowDef) {
+      var lr = document.createElement('div');
+      lr.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:10px;color:#e6edf3;';
+      var sw = document.createElement('span');
+      sw.style.cssText = 'width:20px;height:11px;border-radius:2px;flex-shrink:0;opacity:.85;'
+        + (rowDef[0] ? 'background:' + rowDef[0] + ';' : 'background:transparent;border:1px dashed #6e7681;');
+      var tx = document.createElement('span');
+      tx.textContent = rowDef[1];
+      lr.appendChild(sw); lr.appendChild(tx);
+      lg.appendChild(lr);
+    });
+    sIdw.appendChild(tgl); sIdw.appendChild(oRow); sIdw.appendChild(lg);
     panel.appendChild(sIdw);
     var verEl = document.createElement('div');
     verEl.textContent = 'motor ' + VERSION;
