@@ -138,24 +138,31 @@
   }
 
   // ── Normalización de datos (multi-fecha o formato antiguo) ────────────────
+  function num(s) {
+    if (s === '' || s === null || s === undefined) return null;
+    if (typeof s === 'number') return isNaN(s) ? null : s;
+    var x = parseFloat(String(s).trim().replace(',', '.'));
+    return isNaN(x) ? null : x;
+  }
   function parseData(raw) {
-    if (raw.fechas && raw.fechas.length) {
-      var nF = raw.fechas.length;
-      return {
-        fechas: raw.fechas,
-        hitos: raw.hitos.map(function (h) {
-          var serie = String(h[3]).split(';').map(function (s) {
-            return s === '' || s === undefined ? null : +s;
-          });
-          while (serie.length < nF) serie.push(null);
-          return { id: h[0], lat: h[1], lon: h[2], serie: serie };
-        })
-      };
+    var multi = raw.hitos.length && typeof raw.hitos[0][3] === 'string' && raw.hitos[0][3].indexOf(';') >= 0;
+    if ((raw.fechas && raw.fechas.length) || multi) {
+      var hitos = raw.hitos.map(function (h) {
+        return { id: h[0], lat: h[1], lon: h[2], serie: String(h[3]).split(';').map(num) };
+      });
+      var nF = raw.fechas && raw.fechas.length ? raw.fechas.length : 0;
+      hitos.forEach(function (h) { if (h.serie.length > nF) nF = h.serie.length; });
+      var fechas = [];
+      for (var i = 0; i < nF; i++) {
+        fechas.push(raw.fechas && raw.fechas[i] ? raw.fechas[i] : 'F' + (i + 1));
+      }
+      hitos.forEach(function (h) { while (h.serie.length < nF) h.serie.push(null); });
+      return { fechas: fechas, hitos: hitos };
     }
     return {
       fechas: [raw.fecha || ''],
       hitos: raw.hitos.map(function (h) {
-        return { id: h[0], lat: h[1], lon: h[2], serie: [+h[3] || 0] };
+        return { id: h[0], lat: h[1], lon: h[2], serie: [num(h[3]) === null ? 0 : num(h[3])] };
       })
     };
   }
@@ -169,7 +176,12 @@
   function render() {
     var raw = window.IDW_DATA;
     var root = document.getElementById('idw-root');
-    if (!raw || !root) return;
+    if (!root) return;
+    if (!raw || !raw.hitos || !raw.hitos.length) {
+      root.style.cssText += ';display:flex;align-items:center;justify-content:center;background:#0d1117;color:#e6edf3;font:13px Consolas,monospace;';
+      root.textContent = 'IDW: sin datos (window.IDW_DATA vac\u00edo o truncado)';
+      return;
+    }
     root.style.background = '#0d1117';
     var data = parseData(raw);
     var nF = data.fechas.length;
@@ -343,6 +355,16 @@
 
       // Evitar que arrastrar el slider mueva el mapa
       L.DomEvent.disableClickPropagation(bar);
+    }
+
+    // Diagnóstico: aviso si no hay ninguna medición válida
+    var totalMed = 0;
+    data.hitos.forEach(function (h) { h.serie.forEach(function (s) { if (s !== null) totalMed++; }); });
+    if (!totalMed) {
+      var warnEl = document.createElement('div');
+      warnEl.textContent = '\u26a0 ' + data.hitos.length + ' hitos pero 0 mediciones v\u00e1lidas \u2014 revisa la columna \u0394 COTAA (mm) en la medida';
+      warnEl.style.cssText = 'position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:1000;font:600 12px Consolas,monospace;color:#f0b429;background:rgba(22,27,34,.94);border:1px solid #f0b429;border-radius:8px;padding:6px 14px;';
+      root.appendChild(warnEl);
     }
 
     badge.textContent = data.fechas[current];
