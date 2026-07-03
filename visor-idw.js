@@ -23,6 +23,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
+  var VERSION = 'v10';
 
   // ── Escala de colores (anclas cada 2 mm, bandas cada 1 mm) ────────────────
   var NEG_ANCHORS = [
@@ -588,6 +589,10 @@
     oRow.appendChild(oLab); oRow.appendChild(op); oRow.appendChild(opVal);
     sIdw.appendChild(tgl); sIdw.appendChild(oRow);
     panel.appendChild(sIdw);
+    var verEl = document.createElement('div');
+    verEl.textContent = 'motor ' + VERSION;
+    verEl.style.cssText = 'margin-top:auto;font-size:9px;color:#484f58;text-align:right;';
+    panel.appendChild(verEl);
     root.appendChild(panel);
     L.DomEvent.disableClickPropagation(panel);
 
