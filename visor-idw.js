@@ -66,22 +66,34 @@
 
   // ── IDW normalizado (todos los puntos) sobre malla local en metros ────────
   var CELL = 4, PAD = 120;
-  function computeGrid(pts, bbox, W, H, power) {
+  // reach: alcance (m). Más allá de esa distancia al hito más cercano el valor decae a 0 (terreno estable),
+  // para que las bandas se cierren alrededor de los puntos en vez de llenar el ráster.
+  function computeGrid(pts, bbox, W, H, power, reach) {
     var N = pts.length, halfP = power / 2;
+    var reach2 = reach > 0 ? reach * reach : 0;
     var grid = new Float64Array(W * H);
     var xSpan = bbox.e - bbox.w, ySpan = bbox.n - bbox.s;
     for (var row = 0; row < H; row++) {
       var ym = bbox.n - ySpan * row / (H - 1), base = row * W;
       for (var col = 0; col < W; col++) {
         var xm = bbox.w + xSpan * col / (W - 1);
-        var sw = 0, swz = 0, exact = null;
+        var sw = 0, swz = 0, exact = null, d2min = Infinity;
         for (var j = 0; j < N; j++) {
           var dx = xm - pts[j].x, dy = ym - pts[j].y, d2 = dx * dx + dy * dy;
+          if (d2 < d2min) d2min = d2;
           if (d2 < 0.25) { exact = pts[j].dz; break; }
           var w = halfP === 1 ? 1 / d2 : 1 / Math.pow(d2, halfP);
           sw += w; swz += w * pts[j].dz;
         }
-        grid[base + col] = exact !== null ? exact : (sw > 0 ? swz / sw : 0);
+        var v = exact !== null ? exact : (sw > 0 ? swz / sw : 0);
+        if (exact === null && reach2 > 0) {
+          if (d2min >= reach2) v = 0;
+          else {
+            var f = 1 - d2min / reach2;   // 1 en el punto, 0 en el alcance
+            v *= f * f;                    // decaimiento suave
+          }
+        }
+        grid[base + col] = v;
       }
     }
     return grid;
@@ -236,6 +248,7 @@
     var EXT_PAD = 40;           // margen del ráster alrededor de los puntos (m)
     var MAX_CELLS = 200000;     // tope de celdas (celda adaptativa)
     var CLUSTER_DIST = 250;     // distancia máx (m) para agrupar hitos en una misma superficie
+    var idwReach = 120;         // alcance (m): más allá, terreno estable (0 mm)
 
     // Agrupa puntos en cúmulos espaciales (unión por cercanía < CLUSTER_DIST)
     function clusterPts(pts, dist) {
@@ -299,9 +312,10 @@
     function renderSurface(pts, fecha) {
       // Extensión local: bbox de los puntos del cúmulo + margen
       var xs = pts.map(function (p) { return p.x; }), ys = pts.map(function (p) { return p.y; });
+      var EXT = Math.max(EXT_PAD, idwReach + 20);
       var bbox = {
-        w: Math.min.apply(null, xs) - EXT_PAD, e: Math.max.apply(null, xs) + EXT_PAD,
-        s: Math.min.apply(null, ys) - EXT_PAD, n: Math.max.apply(null, ys) + EXT_PAD
+        w: Math.min.apply(null, xs) - EXT, e: Math.max.apply(null, xs) + EXT,
+        s: Math.min.apply(null, ys) - EXT, n: Math.max.apply(null, ys) + EXT
       };
       // Celda adaptativa: parte de CELL y crece si la malla supera MAX_CELLS
       var cell = CELL;
@@ -320,7 +334,7 @@
         return [ym / mLat, xm / mLon];
       }
 
-      var grid = computeGrid(pts, bbox, W, H, idwPower);
+      var grid = computeGrid(pts, bbox, W, H, idwPower, idwReach);
       var pg = new Float64Array(PW * PH);
       for (var r = 0; r < H; r++) pg.set(grid.subarray(r * W, r * W + W), (r + 1) * PW + 1);
 
@@ -525,7 +539,24 @@
     });
     pw.addEventListener('input', function () { pwVal.textContent = (+pw.value).toFixed(1); });
     pRow.appendChild(pLab); pRow.appendChild(pw); pRow.appendChild(pwVal);
-    sInt.appendChild(mAccum); sInt.appendChild(mExact); sInt.appendChild(pRow);
+    var rRow = document.createElement('div');
+    rRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:6px;';
+    var rLab = document.createElement('span');
+    rLab.textContent = 'Alcance';
+    rLab.style.cssText = 'font-size:10px;color:#7d8590;';
+    var rc = document.createElement('input');
+    rc.type = 'range'; rc.min = 40; rc.max = 400; rc.step = 20; rc.value = idwReach;
+    rc.className = 'idw-mini'; rc.style.flex = '1';
+    var rcVal = document.createElement('span');
+    rcVal.textContent = idwReach + 'm';
+    rcVal.style.cssText = 'font-size:10px;color:#388bfd;min-width:36px;text-align:right;';
+    rc.addEventListener('input', function () { rcVal.textContent = rc.value + 'm'; });
+    rc.addEventListener('change', function () {
+      idwReach = +rc.value;
+      update(current);
+    });
+    rRow.appendChild(rLab); rRow.appendChild(rc); rRow.appendChild(rcVal);
+    sInt.appendChild(mAccum); sInt.appendChild(mExact); sInt.appendChild(pRow); sInt.appendChild(rRow);
     panel.appendChild(sInt);
 
     // IDW: toggle + opacidad
