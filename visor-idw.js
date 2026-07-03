@@ -1,17 +1,25 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    visor-idw.js · Motor IDW para Power BI (HTML Content, versión con scripts)
    ───────────────────────────────────────────────────────────────────────────
-   Uso desde una medida DAX (ver "PowerBI IDW DAX.html"):
+   Formato multi-fecha (con slider integrado):
 
      <div id="idw-root" style="position:absolute;inset:0;"></div>
      <script>window.IDW_DATA = {
-       fecha: "09/06/2026",
-       hitos: [["H1.01", 43.2309635, -2.8365123, -3.2], ...]  // [id, lat, lon, dZ mm]
+       fechas: ["29/04/2026","05/05/2026","20/05/2026"],   // orden ascendente
+       hitos: [
+         // [id, lat, lon, "serie dz alineada con fechas, ';' separador, vacío = sin medición"]
+         ["H1.01", 43.2309635, -2.8365123, "-1.2;-2.0;-3.5"],
+         ["H1.02", 43.2311000, -2.8362000, ";-4.1;-5.8"],
+         ...
+       ]
      };</script>
-     <script src="https://TU_USUARIO.github.io/TU_REPO/powerbi/visor-idw.js"></script>
+     <script src="https://l5ag.github.io/Hitos/visor-idw.js"></script>
 
-   Los datos viajan dentro del visual (nunca salen de Power BI / SharePoint).
-   Este archivo solo contiene código.
+   También acepta el formato antiguo de una sola fecha:
+     { fecha:"09/06/2026", hitos:[["H1.01",lat,lon,dz], ...] }
+
+   El slider acumula: para la fecha seleccionada cada hito usa su última
+   medición anterior o igual a esa fecha. Los datos viajan dentro del visual.
    ═══════════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -129,47 +137,57 @@
     return rings;
   }
 
+  // ── Normalización de datos (multi-fecha o formato antiguo) ────────────────
+  function parseData(raw) {
+    if (raw.fechas && raw.fechas.length) {
+      var nF = raw.fechas.length;
+      return {
+        fechas: raw.fechas,
+        hitos: raw.hitos.map(function (h) {
+          var serie = String(h[3]).split(';').map(function (s) {
+            return s === '' || s === undefined ? null : +s;
+          });
+          while (serie.length < nF) serie.push(null);
+          return { id: h[0], lat: h[1], lon: h[2], serie: serie };
+        })
+      };
+    }
+    return {
+      fechas: [raw.fecha || ''],
+      hitos: raw.hitos.map(function (h) {
+        return { id: h[0], lat: h[1], lon: h[2], serie: [+h[3] || 0] };
+      })
+    };
+  }
+  // Acumulado: última medición con índice ≤ i
+  function dzAt(h, i) {
+    for (var k = i; k >= 0; k--) if (h.serie[k] !== null && !isNaN(h.serie[k])) return h.serie[k];
+    return null;
+  }
+
   // ── Render principal ───────────────────────────────────────────────────────
   function render() {
-    var data = window.IDW_DATA;
+    var raw = window.IDW_DATA;
     var root = document.getElementById('idw-root');
-    if (!data || !root) return;
+    if (!raw || !root) return;
     root.style.background = '#0d1117';
+    var data = parseData(raw);
+    var nF = data.fechas.length;
 
-    // Proyección local equirectangular (metros)
-    var lat0 = 0, n = data.hitos.length;
-    data.hitos.forEach(function (h) { lat0 += h[1]; });
-    lat0 /= n;
+    // Proyección local equirectangular (metros) — bbox fijo con todos los hitos
+    var lat0 = 0;
+    data.hitos.forEach(function (h) { lat0 += h.lat; });
+    lat0 /= data.hitos.length;
     var mLat = 111320, mLon = 111320 * Math.cos(lat0 * Math.PI / 180);
-    var pts = data.hitos.map(function (h) {
-      return { id: h[0], lat: h[1], lon: h[2], x: h[2] * mLon, y: h[1] * mLat, dz: +h[3] || 0 };
-    });
+    data.hitos.forEach(function (h) { h.x = h.lon * mLon; h.y = h.lat * mLat; });
 
-    var xs = pts.map(function (p) { return p.x; }), ys = pts.map(function (p) { return p.y; });
+    var xs = data.hitos.map(function (p) { return p.x; }), ys = data.hitos.map(function (p) { return p.y; });
     var bbox = {
       w: Math.min.apply(null, xs) - PAD, e: Math.max.apply(null, xs) + PAD,
       s: Math.min.apply(null, ys) - PAD, n: Math.max.apply(null, ys) + PAD
     };
     var W = Math.round((bbox.e - bbox.w) / CELL), H = Math.round((bbox.n - bbox.s) / CELL);
-    var grid = computeGrid(pts, bbox, W, H, 2);
-
-    // Acolchar con 0 para cerrar anillos
-    var PW = W + 2, PH = H + 2, pg = new Float64Array(PW * PH);
-    for (var r = 0; r < H; r++) pg.set(grid.subarray(r * W, r * W + W), (r + 1) * PW + 1);
-
-    var mn = 0, mx = 0;
-    for (var i = 0; i < grid.length; i++) { if (grid[i] < mn) mn = grid[i]; if (grid[i] > mx) mx = grid[i]; }
-    var minInt = Math.max(-30, Math.floor(mn)), maxInt = Math.min(30, Math.ceil(mx));
-
-    var map = L.map(root, { zoomControl: true, attributionControl: false, maxZoom: 20 });
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20, maxNativeZoom: 18 }).addTo(map);
-    // Fijar la vista ANTES de añadir capas vectoriales (si no, se proyectan degeneradas)
-    var llBounds = L.latLngBounds(pts.map(function (p) { return [p.lat, p.lon]; }));
-    map.fitBounds(llBounds, { padding: [30, 30] });
-    map.createPane('bands');
-    map.getPane('bands').style.opacity = 0.78;
-    map.getPane('bands').style.zIndex = 410;
-
+    var PW = W + 2, PH = H + 2;
     var xSpan = bbox.e - bbox.w, ySpan = bbox.n - bbox.s;
     function gToLL(pt) {
       var xm = bbox.w + xSpan * (pt[0] - 1) / (W - 1);
@@ -177,70 +195,158 @@
       return [ym / mLat, xm / mLon];
     }
 
-    var jobs = [];
-    NEG_LEVELS.forEach(function (b, i2) {
-      if (minInt >= b.level) return;
-      var next = NEG_LEVELS[i2 + 1];
-      jobs.push({ level: b.level, invert: true, color: b.color, deep: !!b.deep, lo: next ? next.level : Math.min(mn, b.level), hi: b.level });
-    });
-    POS_LEVELS.forEach(function (b, i2) {
-      if (maxInt <= b.level) return;
-      var next = POS_LEVELS[i2 + 1];
-      jobs.push({ level: b.level, invert: false, color: b.color, deep: false, lo: b.level, hi: next ? next.level : Math.max(mx, b.level) });
-    });
-
-    function tooltip(lo, hi) {
-      return '<div style="font-family:Consolas,monospace;font-size:11px;min-width:150px;">'
-        + '<div style="display:flex;justify-content:space-between;gap:14px;border-bottom:1px solid #30363d;padding-bottom:3px;margin-bottom:3px;"><span style="color:#7d8590;">Fecha</span><b>' + data.fecha + '</b></div>'
-        + '<div style="display:flex;justify-content:space-between;gap:14px;"><span style="color:#7d8590;">Δ Cota mín</span><b>' + lo.toFixed(2) + ' mm</b></div>'
-        + '<div style="display:flex;justify-content:space-between;gap:14px;"><span style="color:#7d8590;">Δ Cota máx</span><b>' + hi.toFixed(2) + ' mm</b></div>'
-        + '</div>';
-    }
+    var map = L.map(root, { zoomControl: true, attributionControl: false, maxZoom: 20 });
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20, maxNativeZoom: 18 }).addTo(map);
+    var llBounds = L.latLngBounds(data.hitos.map(function (p) { return [p.lat, p.lon]; }));
+    map.fitBounds(llBounds, { padding: [30, 30] });
+    map.createPane('bands');
+    map.getPane('bands').style.opacity = 0.78;
+    map.getPane('bands').style.zIndex = 410;
 
     var ttStyle = document.createElement('style');
-    ttStyle.textContent = '.idw-tt{background:#161b22!important;color:#e6edf3!important;border:1px solid #2be2ec!important;border-radius:6px!important;font-size:12px!important;padding:5px 9px!important;white-space:nowrap;}';
+    ttStyle.textContent =
+      '.idw-tt{background:#161b22!important;color:#e6edf3!important;border:1px solid #2be2ec!important;border-radius:6px!important;font-size:12px!important;padding:5px 9px!important;white-space:nowrap;}' +
+      '.idw-range{-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:#30363d;outline:none;cursor:pointer;}' +
+      '.idw-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:#2be2ec;border:2px solid #0d1117;box-shadow:0 0 0 1px #2be2ec;cursor:pointer;}' +
+      '.idw-range::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#2be2ec;border:2px solid #0d1117;cursor:pointer;}';
     document.head.appendChild(ttStyle);
 
-    var group = L.featureGroup();
-    jobs.forEach(function (job) {
-      var segs;
-      if (job.invert) {
-        var neg = new Float64Array(PW * PH);
-        for (var k = 0; k < neg.length; k++) neg[k] = -pg[k];
-        segs = marchingSegs(neg, PW, PH, -job.level);
-      } else {
-        segs = marchingSegs(pg, PW, PH, job.level);
-      }
-      var rings = stitchRings(segs).filter(function (rg) { return rg.length > 3; });
-      if (!rings.length) return;
-      L.polygon(rings.map(function (rg) { return rg.map(gToLL); }), {
-        pane: 'bands', smoothFactor: job.deep ? 0 : 1,
-        fillColor: 'rgb(' + job.color + ')', fillOpacity: 1, fillRule: 'evenodd',
-        color: 'rgb(35,35,35)', weight: 0.6, opacity: 0.55
-      }).bindTooltip(tooltip(job.lo, job.hi), { sticky: true, className: 'idw-tt', direction: 'top' })
-        .addTo(group);
-    });
-    group.addTo(map);
-
-    // Hitos
     var icon = L.divIcon({
       className: '',
       html: '<svg width="11" height="11" viewBox="0 0 11 11"><circle cx="5.5" cy="5.5" r="4" fill="#2be2ec" stroke="rgba(0,0,0,.6)" stroke-width="1.3"/><circle cx="5.5" cy="5.5" r="1.6" fill="#fff" opacity=".75"/></svg>',
       iconSize: [11, 11], iconAnchor: [5.5, 5.5]
     });
-    var hg = L.featureGroup();
-    pts.forEach(function (p) {
-      L.marker([p.lat, p.lon], { icon: icon })
-        .bindTooltip('<b style="color:#2be2ec">' + p.id + '</b><br>Δ Cota: <b>' + p.dz.toFixed(1) + ' mm</b>', { direction: 'top', offset: [0, -6], className: 'idw-tt' })
-        .addTo(hg);
-    });
-    hg.addTo(map);
 
-    // Badge de fecha
+    var bandGroup = null, hitoGroup = null;
+
+    function tooltip(fecha, lo, hi) {
+      return '<div style="font-family:Consolas,monospace;font-size:11px;min-width:150px;">'
+        + '<div style="display:flex;justify-content:space-between;gap:14px;border-bottom:1px solid #30363d;padding-bottom:3px;margin-bottom:3px;"><span style="color:#7d8590;">Fecha</span><b>' + fecha + '</b></div>'
+        + '<div style="display:flex;justify-content:space-between;gap:14px;"><span style="color:#7d8590;">Δ Cota mín</span><b>' + lo.toFixed(2) + ' mm</b></div>'
+        + '<div style="display:flex;justify-content:space-between;gap:14px;"><span style="color:#7d8590;">Δ Cota máx</span><b>' + hi.toFixed(2) + ' mm</b></div>'
+        + '</div>';
+    }
+
+    function update(idx) {
+      var fecha = data.fechas[idx];
+      var pts = [];
+      data.hitos.forEach(function (h) {
+        var dz = dzAt(h, idx);
+        if (dz !== null) pts.push({ id: h.id, lat: h.lat, lon: h.lon, x: h.x, y: h.y, dz: dz });
+      });
+      if (bandGroup) { map.removeLayer(bandGroup); bandGroup = null; }
+      if (hitoGroup) { map.removeLayer(hitoGroup); hitoGroup = null; }
+      if (!pts.length) return;
+
+      var grid = computeGrid(pts, bbox, W, H, 2);
+      var pg = new Float64Array(PW * PH);
+      for (var r = 0; r < H; r++) pg.set(grid.subarray(r * W, r * W + W), (r + 1) * PW + 1);
+
+      var mn = 0, mx = 0;
+      for (var i = 0; i < grid.length; i++) { if (grid[i] < mn) mn = grid[i]; if (grid[i] > mx) mx = grid[i]; }
+      var minInt = Math.max(-30, Math.floor(mn)), maxInt = Math.min(30, Math.ceil(mx));
+
+      var jobs = [];
+      NEG_LEVELS.forEach(function (b, i2) {
+        if (minInt >= b.level) return;
+        var next = NEG_LEVELS[i2 + 1];
+        jobs.push({ level: b.level, invert: true, color: b.color, deep: !!b.deep, lo: next ? next.level : Math.min(mn, b.level), hi: b.level });
+      });
+      POS_LEVELS.forEach(function (b, i2) {
+        if (maxInt <= b.level) return;
+        var next = POS_LEVELS[i2 + 1];
+        jobs.push({ level: b.level, invert: false, color: b.color, deep: false, lo: b.level, hi: next ? next.level : Math.max(mx, b.level) });
+      });
+
+      bandGroup = L.featureGroup();
+      jobs.forEach(function (job) {
+        var segs;
+        if (job.invert) {
+          var neg = new Float64Array(PW * PH);
+          for (var k = 0; k < neg.length; k++) neg[k] = -pg[k];
+          segs = marchingSegs(neg, PW, PH, -job.level);
+        } else {
+          segs = marchingSegs(pg, PW, PH, job.level);
+        }
+        var rings = stitchRings(segs).filter(function (rg) { return rg.length > 3; });
+        if (!rings.length) return;
+        L.polygon(rings.map(function (rg) { return rg.map(gToLL); }), {
+          pane: 'bands', smoothFactor: job.deep ? 0 : 1,
+          fillColor: 'rgb(' + job.color + ')', fillOpacity: 1, fillRule: 'evenodd',
+          color: 'rgb(35,35,35)', weight: 0.6, opacity: 0.55
+        }).bindTooltip(tooltip(fecha, job.lo, job.hi), { sticky: true, className: 'idw-tt', direction: 'top' })
+          .addTo(bandGroup);
+      });
+      bandGroup.addTo(map);
+
+      hitoGroup = L.featureGroup();
+      pts.forEach(function (p) {
+        L.marker([p.lat, p.lon], { icon: icon })
+          .bindTooltip('<b style="color:#2be2ec">' + p.id + '</b><br>Δ Cota: <b>' + p.dz.toFixed(1) + ' mm</b>', { direction: 'top', offset: [0, -6], className: 'idw-tt' })
+          .addTo(hitoGroup);
+      });
+      hitoGroup.addTo(map);
+    }
+
+    // Badge de fecha (arriba-dcha)
     var badge = document.createElement('div');
-    badge.textContent = data.fecha;
     badge.style.cssText = 'position:absolute;top:10px;right:10px;z-index:1000;font:700 14px Consolas,monospace;color:#388bfd;background:rgba(22,27,34,.92);border:1px solid #388bfd;border-radius:99px;padding:4px 14px;';
     root.appendChild(badge);
+
+    var current = nF - 1;
+    var pending = null, timer = null;
+    function requestUpdate(idx) {
+      current = idx;
+      badge.textContent = data.fechas[idx];
+      pending = idx;
+      if (timer) return;
+      timer = setTimeout(function () {
+        timer = null;
+        update(pending);
+      }, 120);
+    }
+
+    // Slider de fechas (solo si hay más de una)
+    if (nF > 1) {
+      var bar = document.createElement('div');
+      bar.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);bottom:14px;z-index:1000;display:flex;align-items:center;gap:12px;background:rgba(22,27,34,.94);border:1px solid #30363d;border-radius:99px;padding:8px 18px;font-family:Consolas,monospace;box-shadow:0 4px 16px rgba(0,0,0,.45);';
+      var play = document.createElement('button');
+      play.textContent = '▶';
+      play.style.cssText = 'width:26px;height:26px;border-radius:50%;border:1px solid #2be2ec;background:transparent;color:#2be2ec;font-size:11px;cursor:pointer;flex-shrink:0;line-height:1;';
+      var lab0 = document.createElement('span');
+      lab0.textContent = data.fechas[0];
+      lab0.style.cssText = 'font-size:11px;color:#7d8590;';
+      var range = document.createElement('input');
+      range.type = 'range'; range.min = 0; range.max = nF - 1; range.step = 1; range.value = nF - 1;
+      range.className = 'idw-range';
+      range.style.width = Math.min(320, 40 + nF * 22) + 'px';
+      var lab1 = document.createElement('span');
+      lab1.textContent = data.fechas[nF - 1];
+      lab1.style.cssText = 'font-size:11px;color:#7d8590;';
+      bar.appendChild(play); bar.appendChild(lab0); bar.appendChild(range); bar.appendChild(lab1);
+      root.appendChild(bar);
+
+      range.addEventListener('input', function () { requestUpdate(+range.value); });
+
+      var playing = null;
+      play.addEventListener('click', function () {
+        if (playing) { clearInterval(playing); playing = null; play.textContent = '▶'; return; }
+        play.textContent = '❚❚';
+        var i = (current >= nF - 1) ? -1 : current;
+        playing = setInterval(function () {
+          i++;
+          if (i >= nF) { clearInterval(playing); playing = null; play.textContent = '▶'; return; }
+          range.value = i;
+          requestUpdate(i);
+        }, 900);
+      });
+
+      // Evitar que arrastrar el slider mueva el mapa
+      L.DomEvent.disableClickPropagation(bar);
+    }
+
+    badge.textContent = data.fechas[current];
+    update(current);
   }
 
   loadLeaflet(render);
