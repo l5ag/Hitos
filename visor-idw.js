@@ -30,7 +30,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
-  var VERSION = 'v15';
+  var VERSION = 'v16';
 
   // ── Trazados L5 (polilíneas incrustadas desde Trazados_L5_con_cuneta_2027.kml) ──
   var TRAZADOS = [
@@ -311,6 +311,10 @@
     baseLayers.sat.addTo(map);
     var llBounds = L.latLngBounds(data.hitos.map(function (p) { return [p.lat, p.lon]; }));
     map.fitBounds(llBounds, { padding: [30, 30] });
+    map.on('zoomend', function () {
+      var s = gearSizeForZoom(map.getZoom());
+      Object.keys(frenteMarkers).forEach(function (fn) { frenteMarkers[fn].marker.setIcon(frenteIcon(fn, frenteMarkers[fn].color, s)); });
+    });
     // Trazados L5 incrustados
     var trazGroup = L.featureGroup();
     TRAZADOS.forEach(function (tz) {
@@ -348,8 +352,9 @@
     // ── Frentes de túnel (capa opcional; window.FRENTES) ──────────────────────
     var FRENTES = normalizeFrentes(window.FRENTES);
     function fISO(dmy){ var p = dmy.split('/'); return p[2] + '-' + p[1] + '-' + p[0]; }
-    function frenteIcon(name, color){
-      var s = 36, teeth = '';
+    function gearSizeForZoom(z){ return Math.round(Math.max(13, Math.min(40, (z - 11) * 5))); }
+    function frenteIcon(name, color, size){
+      var s = size || 34, teeth = '';
       for (var a = 0; a < 360; a += 45) {
         teeth += '<rect x="-3.4" y="-29" width="6.8" height="11" rx="1.5" transform="rotate(' + a + ')"/>';
       }
@@ -360,7 +365,7 @@
         iconSize: [s, s], iconAnchor: [s / 2, s / 2], popupAnchor: [0, -s / 2] });
     }
 
-    var bandGroup = null, hitoGroup = null, frenteGroup = null;
+    var bandGroup = null, hitoGroup = null, frenteGroup = null, frenteMarkers = {};
     var frentesOn = true;
     // Parámetros de interpolación (ajustables desde el panel)
     var interpMode = 'accum';   // 'accum' = última medición ≤ fecha | 'exact' = solo hitos medidos esa fecha
@@ -413,13 +418,16 @@
       if (FRENTES && frentesOn) {
         var curISO = fISO(fecha);
         frenteGroup = L.featureGroup();
+        frenteMarkers = {};
+        var gsz = gearSizeForZoom(map.getZoom());
         Object.keys(FRENTES).forEach(function (fn) {
           var fr = FRENTES[fn], pos = null;
           for (var pi = 0; pi < fr.pos.length; pi++) { if (fr.pos[pi][0] <= curISO) pos = fr.pos[pi]; else break; }
           if (!pos) return;
-          L.marker([pos[1], pos[2]], { icon: frenteIcon(fn, fr.color), zIndexOffset: 1000 })
+          var mk = L.marker([pos[1], pos[2]], { icon: frenteIcon(fn, fr.color, gsz), zIndexOffset: 1000 })
             .bindTooltip('<b style="color:' + fr.color + '">\u2699 Frente ' + fn + '</b><br>PK: <b>' + pos[3] + '</b><br>Fecha posici\u00f3n: <b>' + pos[0] + '</b>', { className: 'idw-tt', direction: 'top', offset: [0, -10] })
             .addTo(frenteGroup);
+          frenteMarkers[fn] = { marker: mk, color: fr.color };
         });
         frenteGroup.addTo(map);
       }
