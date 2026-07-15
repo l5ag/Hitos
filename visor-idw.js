@@ -30,7 +30,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
-  var VERSION = 'v14';
+  var VERSION = 'v15';
 
   // ── Trazados L5 (polilíneas incrustadas desde Trazados_L5_con_cuneta_2027.kml) ──
   var TRAZADOS = [
@@ -665,23 +665,7 @@
 
     // Interpolación: modo + exponente
     var sInt = section('Interpolación');
-    var mExact = document.createElement('button');
-    mExact.className = 'idw-lbtn';
-    mExact.textContent = 'Fecha exacta';
-    mExact.title = 'Solo hitos medidos en la fecha seleccionada (como QGIS)';
-    var mAccum = document.createElement('button');
-    mAccum.className = 'idw-lbtn active';
-    mAccum.textContent = 'Acumulado';
-    mAccum.title = 'Última medición de cada hito hasta la fecha seleccionada';
-    function setMode(m) {
-      if (interpMode === m) return;
-      interpMode = m;
-      mExact.classList.toggle('active', m === 'exact');
-      mAccum.classList.toggle('active', m === 'accum');
-      update(current);
-    }
-    mExact.addEventListener('click', function () { setMode('exact'); });
-    mAccum.addEventListener('click', function () { setMode('accum'); });
+    // Interpolación siempre acumulada: botones "Acumulado"/"Fecha exacta" eliminados (interpMode = 'accum').
     var pRow = document.createElement('div');
     pRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:2px;';
     var pLab = document.createElement('span');
@@ -716,7 +700,7 @@
       update(current);
     });
     rRow.appendChild(rLab); rRow.appendChild(rc); rRow.appendChild(rcVal);
-    sInt.appendChild(mAccum); sInt.appendChild(mExact); sInt.appendChild(pRow); sInt.appendChild(rRow);
+    sInt.appendChild(pRow); sInt.appendChild(rRow);
     panel.appendChild(sInt);
 
     // IDW: toggle + opacidad
