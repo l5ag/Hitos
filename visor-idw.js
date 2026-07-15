@@ -30,7 +30,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
-  var VERSION = 'v16';
+  var VERSION = 'v17';
 
   // ── Trazados L5 (polilíneas incrustadas desde Trazados_L5_con_cuneta_2027.kml) ──
   var TRAZADOS = [
@@ -598,16 +598,16 @@
       var speed = 800, playing = null;
       var sRep = section('Reproductor');
       var row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:8px;';
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;';
       var playBtn = document.createElement('button');
       playBtn.textContent = '▶';
       playBtn.className = 'idw-btn';
       var spd = document.createElement('input');
-      spd.type = 'range'; spd.min = 200; spd.max = 2000; spd.step = 100; spd.value = speed;
+      // Barra de velocidad invertida: derecha = más rápido, izquierda = más lento.
+      // Valor del slider V ∈ [200,2000]; intervalo (ms) = 2200 − V. Inicio 800 ms → V = 1400.
+      spd.type = 'range'; spd.min = 200; spd.max = 2000; spd.step = 100; spd.value = 2200 - speed;
       spd.className = 'idw-mini'; spd.style.flex = '1';
-      var spdVal = document.createElement('span');
-      spdVal.textContent = speed + 'ms';
-      spdVal.style.cssText = 'font-size:10px;color:#388bfd;min-width:44px;text-align:right;';
+      spd.title = 'Velocidad de reproducción (derecha = más rápido)';
       var stopPlay = function () { clearInterval(playing); playing = null; playBtn.textContent = '▶'; };
       var startPlay = function () {
         playBtn.textContent = '❚❚';
@@ -617,10 +617,10 @@
       };
       playBtn.addEventListener('click', function () { if (playing) stopPlay(); else startPlay(); });
       spd.addEventListener('input', function () {
-        speed = +spd.value; spdVal.textContent = speed + 'ms';
+        speed = 2200 - (+spd.value);
         if (playing) { clearInterval(playing); playing = setInterval(function () { requestUpdate(current >= nF - 1 ? 0 : current + 1); }, speed); }
       });
-      row.appendChild(playBtn); row.appendChild(spd); row.appendChild(spdVal);
+      row.appendChild(playBtn); row.appendChild(spd);
       sRep.appendChild(row);
       panel.appendChild(sRep);
     }
